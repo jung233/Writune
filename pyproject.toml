@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "writune"
+version = "0.1.0"
+description = "An asynchronous AI writing polisher for MCP agents"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=1.20,<2",
+  "httpx",
+  "openai>=2,<3",
+  "pydantic>=2,<3",
+  "pydantic-settings>=2,<3",
+  "typer",
+  "platformdirs",
+  "python-docx",
+  "python-dotenv",
+  "tomlkit>=0.13,<1",
+]
+
+[project.scripts]
+writune = "writune.cli:app"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "build"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"share/writune" = ["INSTALL_PROMPT.md", "README.md", "README.zh-CN.md"]
+"share/writune/skills/writune-polish" = [".agents/skills/writune-polish/SKILL.md"]
+"share/writune/skills/writune-polish/agents" = [".agents/skills/writune-polish/agents/openai.yaml"]
+"share/writune/skills/writune-polish/references" = [".agents/skills/writune-polish/references/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_default_fixture_loop_scope = "function"

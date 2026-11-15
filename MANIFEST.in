@@ -1,0 +1,5 @@
+include README.md README.zh-CN.md INSTALL_PROMPT.md LICENSE .env.example
+recursive-include docs *.md
+recursive-include scripts *.py *.ps1 *.sh
+recursive-include .agents/skills/writune-polish *.md *.yaml
+recursive-include tests *.py
