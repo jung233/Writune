@@ -3,6 +3,7 @@ import asyncio
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -15,13 +16,13 @@ import pytest
 from writune import updates
 from writune.tasks.process_lock import ProcessLock
 
-def manifest(package, compatibility=None):
-    value = {'schema':1, 'version':'0.1.0', 'compatibility':compatibility or {'dependencies':[]},
+def manifest(package, compatibility=None, version='0.1.0'):
+    value = {'schema':1, 'version':version, 'compatibility':compatibility or {'dependencies':[]},
              'files':updates.package_hashes(package)}
     (package / updates.MANIFEST).write_text(json.dumps(value), encoding='utf-8')
     return value
 
-def zip_package(package):
+def zip_package(package, version='0.1.1'):
     output=io.BytesIO()
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
         for path in package.rglob('*'):
@@ -29,7 +30,11 @@ def zip_package(package):
                 data=path.read_bytes()
                 if path.suffix=='.py':
                     data=data.replace(b'\r\n',b'\n')
-                archive.writestr('Writune-abc/src/writune/'+path.relative_to(package).as_posix(),data)
+                archive.writestr('writune/'+path.relative_to(package).as_posix(),data)
+        info=f'writune-{version}.dist-info/'
+        archive.writestr(info+'METADATA',f'Metadata-Version: 2.4\nName: writune\nVersion: {version}\n')
+        archive.writestr(info+'WHEEL','Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
+        archive.writestr(info+'RECORD','')
     return output.getvalue()
 
 @pytest.fixture(params=['wheel','editable'])
@@ -44,13 +49,23 @@ def installation(tmp_path,monkeypatch,request):
     else:
         root=package
     manifest(package)
+    if request.param=='wheel':
+        info=package.parent/'writune-0.1.0.dist-info'
+        info.mkdir()
+        (info/'METADATA').write_text('Metadata-Version: 2.4\nName: writune\nVersion: 0.1.0\n')
+        (info/'RECORD').write_text('writune/service.py,,\n../../../bin/writune,,\n')
     remote=tmp_path/'remote'/'writune'
     shutil.copytree(package,remote)
-    state={'sha':'a'*40,'archive':zip_package(remote),'requests':[]}
+    state={'version':'0.1.1','archive':zip_package(remote),'requests':[]}
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             state['requests'].append(self.path)
-            body=json.dumps({'sha':state['sha']}).encode() if self.path=='/metadata' else state['archive']
+            metadata={'info':{'version':state['version']},'urls':[{
+                'packagetype':'bdist_wheel','filename':f'writune-{state["version"]}-py3-none-any.whl',
+                'url':'https://files.pythonhosted.org/packages/writune.whl',
+                'digests':{'sha256':state.get('digest_override',hashlib.sha256(state['archive']).hexdigest())},
+                'yanked':state.get('yanked',False)}]}
+            body=json.dumps(metadata).encode() if self.path=='/metadata' else state['archive']
             self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers()
             self.wfile.write(body)
         def log_message(self,*args):
@@ -58,8 +73,11 @@ def installation(tmp_path,monkeypatch,request):
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     base='http://127.0.0.1:'+str(server.server_port)
-    monkeypatch.setattr(updates,'METADATA_URL',base+'/metadata')
-    monkeypatch.setattr(updates,'ARCHIVE_URL',base+'/archive/{revision}')
+    original_download=updates._download
+    def download(url,limit=updates.MAX_DOWNLOAD):
+        route='/metadata' if url==updates.METADATA_URL else '/archive'
+        return original_download(base+route,limit)
+    monkeypatch.setattr(updates,'_download',download)
     original_run=subprocess.run
     def only_python(command,**kwargs):
         assert 'python' in Path(command[0]).name.lower(), 'Updater must not launch Git or pip'
@@ -68,8 +86,8 @@ def installation(tmp_path,monkeypatch,request):
     def publish(suffix='\nHTTP_UPDATE_MARKER=True\n',compatibility=None):
         path=remote/'service.py'
         path.write_text(path.read_text(encoding='utf-8')+suffix,encoding='utf-8')
-        manifest(remote,compatibility)
-        state['archive']=zip_package(remote)
+        manifest(remote,compatibility,version=state['version'])
+        state['archive']=zip_package(remote,state['version'])
     yield root,package,remote,state,publish
     server.shutdown();server.server_close();thread.join()
 
@@ -78,6 +96,7 @@ def test_http_update_reuses_original_package_without_git(installation):
     publish()
     result=updates.check_and_update(root,0)
     assert result['status']=='updated'
+    assert result['current_version']=='0.1.1'
     assert 'HTTP_UPDATE_MARKER' in (package/'service.py').read_text()
     assert updates.package_hashes(package)==updates._read(package/updates.MANIFEST)['files']
     assert not list(updates.runtime_dir(root).rglob('service.py'))
@@ -107,7 +126,7 @@ def test_bad_candidate_leaves_package_untouched(installation,failure):
     publish(suffix='\ndef syntax error\n' if failure=='syntax' else '\nVALID=True\n')
     if failure=='checksum':
         (remote/'service.py').write_text('tampered after manifest creation')
-        state['archive']=zip_package(remote)
+        state['archive']=zip_package(remote,state['version'])
     assert updates.check_and_update(root,0)['status']=='check_failed'
     assert updates.package_hashes(package)==before
     assert not updates.pending(root)
@@ -170,14 +189,14 @@ def test_checker_is_single_flight_and_stale_intent_is_ignored(tmp_path):
         assert updates.check_and_update(tmp_path,0)['status']=='not_checked'
     finally:
         lock.release()
-    updates._write(updates.runtime_dir(tmp_path)/'pending.json',{'revision':'old'})
+    updates._write(updates.runtime_dir(tmp_path)/'pending.json',{'version':'old'})
     assert not updates.pending(tmp_path)
 
 def test_shipped_manifest_matches_package():
     package=Path(__file__).resolve().parents[1]/'src'/'writune'
     assert updates.package_hashes(package)==updates._checked_manifest(updates._read(package/updates.MANIFEST))['files']
 
-def test_text_hashes_accept_source_archive_newlines_without_weakening_binary_checks():
+def test_text_hashes_accept_cross_platform_newlines_without_weakening_binary_checks():
     assert updates.file_digest('module.py',b'a\r\nb\r\n')==updates.file_digest('module.py',b'a\nb\n')
     assert updates.file_digest('image.bin',b'a\r\n')!=updates.file_digest('image.bin',b'a\n')
 
@@ -233,3 +252,71 @@ def test_worker_drains_before_claiming_more_tasks(tmp_path,monkeypatch):
                 draining=False;worker.stop();await asyncio.wait_for(task,5)
         asyncio.run(run())
     assert restarted==[True]
+
+
+def test_download_hash_mismatch_preserves_installation(installation):
+    root,package,remote,state,publish=installation
+    publish()
+    before=updates.package_hashes(package)
+    state['digest_override']='0'*64
+    assert updates.check_and_update(root,0)['status']=='check_failed'
+    assert updates.package_hashes(package)==before
+
+
+def test_older_pypi_release_never_downgrades(installation):
+    root,package,remote,state,publish=installation
+    state['version']='0.0.9'
+    before=updates.package_hashes(package)
+    assert updates.check_and_update(root,0)['status']=='up_to_date'
+    assert updates.package_hashes(package)==before
+    assert state['requests']==['/metadata']
+
+
+def test_update_refreshes_installed_distribution_metadata(installation):
+    root,package,remote,state,publish=installation
+    publish()
+    assert updates.check_and_update(root,0)['status']=='updated'
+    if package.parent.name=='src':
+        return
+    info=package.parent/'writune-0.1.1.dist-info'
+    assert 'Version: 0.1.1' in (info/'METADATA').read_text()
+    record=(info/'RECORD').read_text()
+    assert 'writune/service.py,sha256=' in record
+    assert '../../../bin/writune' in record
+    assert 'writune-0.1.0.dist-info' not in record
+    assert not (package.parent/'writune-0.1.0.dist-info').exists()
+
+
+def test_candidate_rejects_untrusted_download_origin():
+    metadata={'info':{'version':'0.2.0'},'urls':[{
+        'packagetype':'bdist_wheel','filename':'writune-0.2.0-py3-none-any.whl',
+        'url':'https://untrusted.example/writune.whl','digests':{'sha256':'a'*64}}]}
+    with pytest.raises(ValueError,match='Invalid PyPI'):
+        updates._candidate(metadata,'0.1.0')
+
+
+def test_metadata_switch_failure_rolls_back_package_and_metadata(installation,monkeypatch):
+    root,package,remote,state,publish=installation
+    if package.parent.name=='src':
+        pytest.skip('Editable installs do not switch distribution metadata')
+    publish()
+    before=updates.package_hashes(package)
+    original=Path.rename
+    def rename(path,target):
+        if path.name=='new' and str(target).endswith('writune-0.1.1.dist-info'):
+            raise OSError('simulated metadata switch failure')
+        return original(path,target)
+    monkeypatch.setattr(Path,'rename',rename)
+    assert updates.check_and_update(root,0)['status']=='check_failed'
+    assert updates.package_hashes(package)==before
+    assert (package.parent/'writune-0.1.0.dist-info'/'METADATA').is_file()
+    assert not (package.parent/'writune-0.1.1.dist-info').exists()
+
+
+def test_yanked_release_requires_manual_review(installation):
+    root,package,remote,state,publish=installation
+    publish()
+    state['yanked']=True
+    before=updates.package_hashes(package)
+    assert updates.check_and_update(root,0)['status']=='manual_install_required'
+    assert updates.package_hashes(package)==before

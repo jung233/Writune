@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import tomllib
 
@@ -10,6 +11,17 @@ def build(root: Path) -> dict:
     package = root / 'src' / 'writune'
     project = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))
     metadata = project['project']
+    resources = package / 'resources'
+    skill = root / '.agents' / 'skills' / 'writune-polish'
+    if skill.is_dir():
+        shutil.copytree(skill, resources / 'skills' / 'writune-polish', dirs_exist_ok=True)
+    documentation = resources / 'docs'
+    documentation.mkdir(parents=True, exist_ok=True)
+    for name in ('INSTALL_PROMPT.md', 'README.md', 'README.en.md',
+                 'MANUAL_INSTALL.md', 'MANUAL_INSTALL.zh-CN.md'):
+        source = root / name
+        if source.is_file():
+            shutil.copyfile(source, documentation / name)
     files = {}
     for path in sorted(package.rglob('*')):
         relative = path.relative_to(package)
@@ -26,6 +38,7 @@ def build(root: Path) -> dict:
         'compatibility': {key: metadata.get(key) for key in
                           ('dependencies', 'requires-python', 'scripts', 'entry-points')},
     }
+    manifest['compatibility']['resources_layout'] = 2
     (package / 'update-manifest.json').write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     return manifest

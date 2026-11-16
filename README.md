@@ -107,15 +107,57 @@ ChatGPT 与 Claude 擅长复杂推理、代码分析与研究设计，但写出�
 
 ## 🚀 安装与快速上手
 
-### ⚡ 1. 交给编码助手一键自动安装（推荐）
+提供三种安装方式。自动 Prompt 和 PyPI 安装共用包内 CLI；全手动安装则逐项创建配置文件和 MCP 条目。
 
-把 **[INSTALL_PROMPT.md](INSTALL_PROMPT.md)** 交给具备终端与文件编辑能力的编码助手（如 Claude Code、Codex 或 OpenCode），然后发送以下指令：
+| 方式 | 适合谁 | 入口 |
+| --- | --- | --- |
+| 自动 Prompt | 让编码助手完成安装、配置和验收 | [INSTALL_PROMPT.md](INSTALL_PROMPT.md) |
+| PyPI / pip | 自己运行命令，由 CLI 完成配置 | 下方命令 |
+| 全手动 | 自己创建环境、填写 JSON/.env、编辑 MCP 配置并复制 Skill | [全手动指南](MANUAL_INSTALL.zh-CN.md) |
 
-> *“请执行这份安装 Prompt，完成 Writune 的独立安装、配置、MCP 注册与实际验收。”*
+### 自动 Prompt
 
-- **推荐润色模型配置：** 安装引导询问模型时，建议配置擅长“说人话”、性价比极高的模型，例如 **DeepSeek V4.1**、**Gemini Flash / Gemini 4 系列** 等。
-- **零侵入专用环境：** 自动安装到独立的 `.writune-venv` 中，不改动系统现有的 Python、Conda、`PATH` 或注册表；在 Windows 下自动配置 `pythonw.exe`，使其以无窗口模式在后台静默运行。
-- 🛠️ **希望手动输入命令、分步安装？** 请直接查看 **[手动安装与配置指南](MANUAL_INSTALL.zh-CN.md)**。
+把 [INSTALL_PROMPT.md](INSTALL_PROMPT.md) 交给 Codex、Claude Code 或 OpenCode，并发送：
+
+> 请按这份 Prompt 从 PyPI 安装 Writune，完成配置、MCP 注册、Skill 安装和验收。
+
+助手将新建专用 Python 环境，从 PyPI 安装软件包，然后执行与下文相同的 CLI 流程，无需克隆仓库，也无需下载项目安装脚本。
+
+### PyPI：安装后统一使用 CLI
+
+需要 **Python 3.11+**。在新建并激活的专用虚拟环境中执行：
+
+```sh
+pip install --upgrade "writune>=0.1.2"
+writune init
+writune mcp register --client codex --install-skill
+writune doctor
+```
+
+`writune init` 会询问 Responses API 地址、隐藏输入的 API Key、中英文首选/备用模型、授权工作区和运行参数。凭据单独保存在配置目录的 `.env` 中。`--client` 可选 `codex`、`claude-code` 或 `opencode`；多个客户端分别注册。Windows 下自动使用当前环境的 `pythonw.exe`，后台运行时不弹出窗口。
+
+环境创建示例：Windows 先使用 `python -m venv .writune-venv`，再运行 `.\.writune-venv\Scripts\Activate.ps1`；macOS/Linux 先使用 `python3 -m venv .writune-venv`，再运行 `source .writune-venv/bin/activate`。若不激活环境，可直接使用该环境的绝对 Python 路径执行 `-m writune`，完整示例见[全手动指南](MANUAL_INSTALL.zh-CN.md)。已有目录应保留，另选新环境路径。
+
+初始化、MCP 注册和诊断命令可使用同一个 `--home <目录>` 固定配置位置；注册后的 MCP 也会使用该目录。后续调整可用：
+
+```sh
+writune config show
+writune config set max_concurrency 4
+writune config set providers.primary.api_key
+writune mcp show --client codex
+writune skill install --client codex
+writune test-provider
+```
+
+`config show` 隐藏密钥；不带值的密钥设置会隐藏输入。`test-provider` 会发起真实的短模型请求。完成注册后，重新连接客户端的 Writune MCP。
+
+更改运行配置后，请在当前任务结束、空闲 worker 退出后重连 MCP，以便新进程加载配置。CLI 的新调用会直接读取已保存的设置。
+
+### 全手动与版本更新
+
+[全手动指南](MANUAL_INSTALL.zh-CN.md) 不调用项目安装脚本，也不调用 `init` 或 `mcp register` 来代填配置：你将直接创建 `config.json`、`.env` 和客户端 MCP 条目，并复制包内附带的完整 Skill。
+
+自动更新会通过 HTTPS 检查 PyPI 上已发布的稳定版本，校验 wheel 的 SHA-256，并在当前任务结束后复用原目录更新。若存在本地改动，或依赖、Python 要求、入口发生变化，则保留现状；需要完整升级时，在同一环境运行 `pip install --upgrade writune`。可通过 `writune update-status` 查看结果，或通过 `writune config set auto_update false` 关闭自动更新。详见[配置说明](docs/configuration.md)。
 
 ---
 
@@ -309,6 +351,7 @@ writune cleanup --all
 
 ```text
 src/writune/
+├── integration.py         # Package-native MCP registration and bundled skill installation
 ├── cli.py                 # Typer CLI 命令与交互式/非交互式初始化
 ├── mcp_server.py          # FastMCP stdio 服务端与 MCP 工具协议适配
 ├── config.py              # 配置模型、凭据隔离、路径解析与逐模型参数覆盖
@@ -318,7 +361,7 @@ src/writune/
 ├── polishing/             # 场景与风格模板、Sepia 编辑工作流、保护片段掩码与输出校验
 ├── files/                 # 临时存储、工作区路径授权、原子写入、编码保留与 DOCX 处理
 └── telemetry/             # 滚动窗口性能观测、缓存 Token 统计与显式配置价格核算
-scripts/                   # 隔离环境安装 (.ps1/.sh)、客户端自动注册与安装包校验脚本
+scripts/                   # 开发验收、更新清单生成与安装包校验
 tests/                     # 单元、跨进程、崩溃恢复、超时回退与真实 stdio 端到端测试
 .agents/skills/            # writune-polish Agent 写作工作流 Skill 与编辑方法参考文档
 docs/                      # 配置详解、系统架构、MCP 接入与验收标准文档
@@ -335,6 +378,7 @@ docs/                      # 配置详解、系统架构、MCP 接入与验收�
 
 ```powershell
 .\.writune-venv\Scripts\python.exe -m pytest -q
+.\.writune-venv\Scripts\python.exe scripts/build_update_manifest.py
 .\.writune-venv\Scripts\python.exe -m build
 .\.writune-venv\Scripts\python.exe scripts/verify_package.py
 ```

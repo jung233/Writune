@@ -15,11 +15,23 @@ import typer
 from pydantic import SecretStr, ValidationError
 
 from writune.config import ProviderConfig, Settings
+from writune.integration import mcp_app, skill_app
 from writune.service import Service, split_model
 
 app = typer.Typer(name="writune", no_args_is_help=True, help="Asynchronous AI writing polisher")
 config_app = typer.Typer(name="config", no_args_is_help=True, help="Inspect or update Writune settings")
 app.add_typer(config_app, name="config")
+app.add_typer(mcp_app, name="mcp")
+app.add_typer(skill_app, name="skill")
+
+
+@app.callback(invoke_without_command=True)
+def main(version: bool = typer.Option(False, "--version", is_eager=True)) -> None:
+    """Configure and operate the installed Writune package."""
+    if version:
+        from writune import __version__
+        typer.echo(__version__)
+        raise typer.Exit()
 
 
 def _settings(home: Path | None) -> Settings:
@@ -104,7 +116,7 @@ def _init_settings(
     allowed_workspaces: list[Path] | None,
 ) -> Settings:
     existing = Settings.load(home)
-    payload: dict[str, Any] = existing.model_dump(mode="python") if existing.config_path.exists() else {}
+    payload: dict[str, Any] = existing.model_dump(mode="python")
     if config_file is not None:
         payload = _merge_dicts(payload, _read_json(config_file))
         # Preserve Settings.load's environment-over-JSON secret precedence even
@@ -140,11 +152,6 @@ def _init_settings(
         for value in (primary_url, primary_port, api_key, backup_url, backup_port, backup_api_key)
     )
     if non_interactive:
-        if config_file is None and not (primary_url and api_key and zh_primary_model and en_primary_model):
-            raise typer.BadParameter(
-                "--non-interactive requires --config-file or --primary-url, --api-key, "
-                "--zh-primary-model, and --en-primary-model"
-            )
         if has_cli_provider_fields:
             current_primary = payload.get("providers", {}).get("primary", {})
             if isinstance(current_primary, ProviderConfig):
@@ -223,13 +230,13 @@ def _init_settings(
         retry_count = retry_count if retry_count is not None else typer.prompt("Retry count", default=1, type=int)
         data_dir = data_dir or Path(typer.prompt("Queue and statistics directory (task files use OS temp)", default=str(existing.data_dir)))
         task_ttl_hours = task_ttl_hours if task_ttl_hours is not None else typer.prompt("Task file retention (hours)", default=24.0, type=float)
-        workspace_text = typer.prompt(
-            "Allowed workspace directories (separate multiple paths with semicolons)",
-            default=";".join(str(path) for path in existing.allowed_workspaces),
-        )
-        allowed_workspaces = allowed_workspaces if allowed_workspaces is not None else [
-            Path(part.strip()) for part in workspace_text.split(";") if part.strip()
-        ]
+        if allowed_workspaces is None:
+            workspace_text = typer.prompt(
+                "Allowed workspace directories (separate multiple paths with semicolons)",
+                default=";".join(str(path) for path in existing.allowed_workspaces),
+            )
+            allowed_workspaces = [Path(part.strip()) for part in workspace_text.split(";") if part.strip()]
+
 
     if has_cli_provider_fields or config_file is None:
         if not primary_url or not api_key:
@@ -528,7 +535,7 @@ def doctor(
 
     checks: list[tuple[str, bool, str]] = []
     checks.append(("python", sys.version_info >= (3, 11), sys.version.split()[0]))
-    for package in ("mcp", "typer", "httpx", "pydantic", "pydantic-settings", "python-docx", "python-dotenv", "openai"):
+    for package in ("mcp", "typer", "httpx", "pydantic", "pydantic-settings", "python-docx", "python-dotenv", "openai", "tomlkit", "packaging"):
         try:
             version = importlib.metadata.version(package)
             checks.append((f"dependency:{package}", True, version))
@@ -578,6 +585,8 @@ def _skill_installed() -> bool:
         Path.cwd() / ".agents" / "skills" / "writune-polish" / "SKILL.md",
         Path.home() / ".agents" / "skills" / "writune-polish" / "SKILL.md",
         Path.home() / ".codex" / "skills" / "writune-polish" / "SKILL.md",
+        Path.home() / ".claude" / "skills" / "writune-polish" / "SKILL.md",
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "opencode" / "skills" / "writune-polish" / "SKILL.md",
     ]
     return any(path.is_file() for path in candidates)
 
@@ -730,6 +739,16 @@ def worker(home: Path | None = typer.Option(None, "--home", "--config-dir")) -> 
     from writune.tasks.worker import Worker
 
     asyncio.run(Worker(_settings(home)).run())
+
+
+@app.command('update')
+def update_command() -> None:
+    """Check PyPI now and apply a compatible stable release in the original directory."""
+    from writune.updates import check_and_update, source_root
+    result = check_and_update(source_root(), interval=0)
+    _echo_json(result)
+    if result['status'] in {'check_failed', 'manual_install_required', 'local_changes'}:
+        raise typer.Exit(code=1)
 
 
 @app.command('update-status')

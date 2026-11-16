@@ -1,33 +1,19 @@
 # Skill installation
 
-The skill lives in `.agents/skills/writune-polish/` and includes a `SKILL.md` plus four focused references. The repository location is directly discoverable by Codex and is a documented compatibility source for OpenCode. Claude Code expects a different directory.
-
-## Codex
-
-For use in this repository, leave the folder at `.agents/skills/writune-polish`. For a user-level install, copy the entire folder to `~/.agents/skills/writune-polish`:
+The complete `writune-polish` skill, including references and agent metadata, is bundled in the Python package. No checkout is required:
 
 ```sh
-mkdir -p ~/.agents/skills
-cp -R .agents/skills/writune-polish ~/.agents/skills/
+writune skill install --client codex
 ```
 
-The skill is eligible for automatic selection and can be requested as `$writune-polish`. Codex skill locations are documented in the [Codex skills guide](https://developers.openai.com/codex/skills/).
+Select `codex`, `claude-code`, or `opencode`. `writune mcp register --client codex --install-skill` combines registration with the same skill installer. Use `--destination /absolute/path/writune-polish` to select an exact destination directory.
 
-## Claude Code
+| Client | Default user destination |
+| --- | --- |
+| Codex | `~/.agents/skills/writune-polish` |
+| Claude Code | `~/.claude/skills/writune-polish` |
+| OpenCode | `~/.config/opencode/skills/writune-polish`, respecting `XDG_CONFIG_HOME` |
 
-Project scope:
+The installer checks the entire destination before copying and will not overwrite customized files. Inspect conflicts and merge changes manually. Package updates refresh bundled resources and preserve separately installed customized skills. To install manually, copy the entire `writune/resources/skills/writune-polish` directory from site-packages, as described in the [manual guide](../MANUAL_INSTALL.md).
 
-```sh
-mkdir -p .claude/skills
-cp -R .agents/skills/writune-polish .claude/skills/
-```
-
-User scope uses `~/.claude/skills/writune-polish` instead. Claude Code can select skills automatically or invoke one with `/writune-polish`. See the [Claude Code skills guide](https://code.claude.com/docs/en/skills).
-
-## OpenCode
-
-OpenCode can discover the repository's existing `.agents/skills/writune-polish` as a project compatibility skill. Alternatively, copy it to `.opencode/skills/writune-polish`. A user-level OpenCode install can use `~/.config/opencode/skills/writune-polish`; OpenCode also searches global compatibility locations including `~/.agents/skills`. See the [OpenCode skills guide](https://opencode.ai/docs/skills).
-
-## Registering MCP is separate
-
-Installing the skill supplies writing workflow guidance only. It does not install Writune, start the MCP server, or register the server in a client. Configure the MCP server separately using [mcp-integration.md](mcp-integration.md) and confirm that its tools are exposed before expecting the skill workflow to run.
+The canonical development source remains `.agents/skills/writune-polish`; `scripts/build_update_manifest.py` synchronizes it into the package resources. Installing a skill supplies writing instructions but does not establish a tool connection. Register MCP separately and confirm that the client exposes Writune's tools.

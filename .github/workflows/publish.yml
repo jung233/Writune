@@ -52,6 +52,9 @@ jobs:
           python -m venv /tmp/writune-wheel-test
           /tmp/writune-wheel-test/bin/python -m pip install dist/*.whl
           /tmp/writune-wheel-test/bin/writune --help
+          /tmp/writune-wheel-test/bin/writune --version
+          /tmp/writune-wheel-test/bin/writune mcp register --client codex --config /tmp/writune-client/config.toml --home /tmp/writune-config
+          /tmp/writune-wheel-test/bin/writune skill install --client codex --destination /tmp/writune-skill/writune-polish
       - uses: actions/upload-artifact@v5
         with:
           name: distributions

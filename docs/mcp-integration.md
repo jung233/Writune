@@ -1,62 +1,31 @@
 # MCP integration
 
-Writune exposes a local stdio MCP server. Start it with `writune serve`; use the absolute executable path in a client's configuration when the executable is not on that client's PATH.
-
-## Codex
-
-Codex reads MCP server configuration from `~/.codex/config.toml` by default. Add a stdio server entry and replace the executable path with the path in the Writune installation:
-
-```toml
-[mcp_servers.writune]
-command = "C:/path/Writune/.writune-venv/Scripts/pythonw.exe"
-args = ["-m", "writune", "serve"]
-startup_timeout_sec = 20
-tool_timeout_sec = 60
-```
-
-On Linux, for example:
-
-```toml
-[mcp_servers.writune]
-command = "/home/you/Writune/.writune-venv/bin/writune"
-args = ["serve"]
-startup_timeout_sec = 20
-tool_timeout_sec = 60
-```
-
-The absolute path is illustrative. Never put the provider API key in this file; Writune loads it from its own configuration directory. Restart/reload the client MCP connection after editing the config. See the [Codex MCP guide](https://developers.openai.com/codex/mcp/) for current configuration options.
-
-`scripts/register_mcp.py --client codex --executable <WRITUNE_EXECUTABLE> --home <CONFIG_HOME>` merges this entry automatically. On Windows the script converts the environment's `writune.exe` path to `pythonw.exe` with `-m writune serve`; no shell or visible console is involved. Use `--client claude-code` to update `~/.claude.json` instead, and `--install-skill` to install the full companion skill. Existing unrelated settings are retained, backups use OS temporary storage, and `--replace` explicitly updates a conflicting Writune entry. The complete harness workflow is in [INSTALL_PROMPT.md](../INSTALL_PROMPT.md).
-
-## Claude Code
-
-Install the local stdio server with the executable from the Writune environment:
+Install Writune from PyPI into a dedicated environment, then run `writune init`. MCP registration is part of the installed package:
 
 ```sh
-claude mcp add --scope user writune -- /absolute/path/to/writune serve
+writune mcp register --client codex --install-skill
+writune doctor
 ```
 
-For project scope, use `--scope project` instead of `--scope user`. On Windows, use the environment's `pythonw.exe` directly with arguments `-m writune serve --home <CONFIG_HOME>`; the registration script handles this automatically. Check `claude mcp list` or `/mcp` in a Claude Code session. See the [Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
+Select `codex`, `claude-code`, or `opencode`; register each client separately. Use the same `--home /absolute/config/directory` for initialization, registration, and diagnostics when choosing a custom configuration home. The saved command uses the current environment's absolute Python path with `-m writune serve --home ...`. Windows uses `pythonw.exe`. Provider credentials stay in Writune's private `.env`, outside the MCP configuration.
 
-## OpenCode
+## Inspecting and merging configuration
 
-Add a local server entry to `opencode.json` or `opencode.jsonc`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "servers": {
-      "writune": {
-        "type": "local",
-        "command": ["/absolute/path/to/writune", "serve"]
-      }
-    }
-  }
-}
+```sh
+writune mcp show --client codex
+writune mcp register --client codex --config /absolute/client/config.toml
+writune skill install --client codex
 ```
 
-On Windows, use a command array such as `["C:/path/Writune/.writune-venv/Scripts/pythonw.exe", "-m", "writune", "serve"]` to avoid a console window. See the [OpenCode MCP servers guide](https://opencode.ai/docs/mcp-servers) for current local-server settings.
+`mcp show` prints a copyable entry without writing to a file. `mcp register` merges only Writune's entry, preserves unrelated fields and Codex TOML comments, and backs up existing configuration to OS temporary storage. Repeating the same registration is idempotent. Inspect a conflicting Writune entry before using `--replace`. Customized skill files are retained rather than overwritten. For fully manual editing and copying, use the [manual guide](../MANUAL_INSTALL.md).
+
+| Client | Default user configuration | Entry |
+| --- | --- | --- |
+| Codex | `$CODEX_HOME/config.toml`, otherwise `~/.codex/config.toml` | `mcp_servers.writune` |
+| Claude Code | `~/.claude.json` | `mcpServers.writune` |
+| OpenCode V2 | `$XDG_CONFIG_HOME/opencode/opencode.json`, otherwise `~/.config/opencode/opencode.json` | `mcp.servers.writune` |
+
+OpenCode V2 uses a local command array and `disabled: false`; legacy direct `mcp.writune` entries require migration. The CLI does not rewrite JSONC: edit an existing `opencode.jsonc` manually or explicitly provide a valid JSON configuration path. See the [OpenCode MCP guide](https://opencode.ai/docs/mcp-servers/) and [Claude Code MCP guide](https://code.claude.com/docs/en/mcp). Reconnect the client after registration and confirm its own tool discovery. A CLI stdio check does not establish discovery within a running client.
 
 ## Writune tools
 

@@ -1,108 +1,149 @@
-<div align="center">
+# Writune Fully Manual Installation
 
-# 🛠️ Writune Manual Installation Guide
+[Back to README](README.en.md) · [中文](MANUAL_INSTALL.zh-CN.md) · [Automatic Prompt](INSTALL_PROMPT.md)
 
-**Step-by-step manual setup for isolated Python environments, Provider initialization, and MCP client registration.**
+This guide creates the environment, settings, MCP entries, and skill files one step at a time. It uses no project installation scripts and does not call `writune init` or `writune mcp register` to write configuration. For CLI-assisted setup, follow the PyPI route in the README.
 
-[⬅️ Back to README](README.en.md) &nbsp;·&nbsp; [🇨🇳 中文手动安装指南](MANUAL_INSTALL.zh-CN.md) &nbsp;·&nbsp; [⚡ One-Step Harness Install](INSTALL_PROMPT.md)
+## 1. Create an environment and install the package
 
-</div>
+Use Python 3.11+. Replace `YOU`, paths, URLs, and model IDs with actual values before running the commands. Choose a new environment directory and keep any existing environment intact. The commands invoke the new interpreter directly, so you do not need to activate the environment or make permanent PATH changes.
 
----
-
-> [!TIP]
-> **Prefer an automated installation?**
-> Give **[INSTALL_PROMPT.md](INSTALL_PROMPT.md)** to your coding agent (Codex, Claude Code, or OpenCode) and ask it to run the installation task automatically. Use this manual guide only if you want full terminal control over each step.
-
----
-
-## 1️⃣ Create the Isolated Environment
-
-Obtain the source, enter the Writune directory, and use **Python 3.11+**.
-
-### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
-.\scripts\install.ps1
-# Or include development & test dependencies:
-.\scripts\install.ps1 -WithDev
+python -I -m venv C:/Users/YOU/Tools/writune-env
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -I -m pip --isolated install --upgrade "writune>=0.1.2"
 ```
 
+macOS/Linux (on macOS, user paths usually begin with `/Users/YOU`):
 
-### macOS / Linux
-
-```bash
-bash scripts/install.sh
-# Or include development & test dependencies:
-bash scripts/install.sh --dev
+```sh
+python3 -I -m venv /home/YOU/tools/writune-env
+/home/YOU/tools/writune-env/bin/python -I -m pip --isolated install --upgrade 'writune>=0.1.2'
 ```
 
+## 2. Write Writune configuration files
 
-### Environment Guarantees & Custom Flags
+Create a private configuration directory using a file manager—for example, `C:/Users/YOU/.config/writune` on Windows or `/home/YOU/.config/writune` on Linux. Use this same directory for the `--home` argument in the MCP entry.
 
-- **Dedicated `.writune-venv`:** Packages are installed into `.writune-venv` and marked with Writune ownership. Existing Python installations, Conda environments, project virtualenvs, user `site-packages`, system `PATH`, shell profiles, and Windows registry entries remain untouched.
-- **Unowned Directory Protection:** If the selected target directory already contains an unowned environment, the script refuses to overwrite it and prompts for a different path.
-- **Custom Paths:** Pass `-VenvPath` and `-PythonExecutable` in PowerShell, or `--venv` and `--python` in Bash.
-- **Managed Python via `uv`:** When `uv` is available, add `-UseUv` (PowerShell) or `--uv` (Bash) to provision Writune's private managed Python runtime.
+Create a UTF-8 `config.json`:
 
----
+```json
+{
+  "providers": {"primary": {"base_url": "https://provider.example/v1"}},
+  "zh_primary": "primary/ACTUAL_CHINESE_MODEL_ID",
+  "en_primary": "primary/ACTUAL_ENGLISH_MODEL_ID",
+  "zh_secondary": "",
+  "en_secondary": "",
+  "allowed_workspaces": ["C:/Users/YOU/Documents/drafts"],
+  "auto_update": true,
+  "update_check_seconds": 21600,
+  "default_style": "natural",
+  "max_concurrency": 4,
+  "connect_timeout": 8,
+  "first_token_timeout": 25,
+  "inactivity_timeout": 20,
+  "total_timeout": 120,
+  "min_tps": 6,
+  "retry_count": 1,
+  "task_ttl_hours": 24
+}
+```
 
-## 2️⃣ Configure Provider, Models & Authorized Workspaces
+Replace the URL with the provider's Responses API base URL, including its actual port and any `/v1` path. Replace model IDs with names supported by that provider. In a `primary/model-id` reference, the left side identifies the local provider and the right side preserves the complete upstream model ID. Leave unused fallback slots empty. Replace `allowed_workspaces` with the actual absolute directories Writune may read and write; use `/Users/...` or `/home/...` paths on macOS/Linux.
 
-### Windows PowerShell
+Create a separate `.env` in the same directory for credentials:
+
+```dotenv
+WRITUNE_PROVIDER_PRIMARY_API_KEY="YOUR_PRIVATE_KEY"
+```
+
+Do not store the key in MCP client configuration or in source control. Chinese and English may share a model. See [configuration](docs/configuration.md) for independent fallback providers and model-specific settings. SQLite uses the platform user data directory by default; task snapshots and results use OS temporary storage.
+
+## 3. Edit client MCP configuration
+
+Back up the existing client file, then merge only the Writune entry while preserving the other settings. The examples below are for Windows. On macOS/Linux, replace the interpreter with `/home/YOU/tools/writune-env/bin/python` and the configuration home with `/home/YOU/.config/writune`. Keep the other arguments. On Windows, use the environment's `pythonw.exe` to run without a console window.
+
+### Codex
+
+Edit `~/.codex/config.toml`, or `config.toml` under `CODEX_HOME` when that variable is set:
+
+```toml
+[mcp_servers.writune]
+command = "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe"
+args = ["-m", "writune", "serve", "--home", "C:/Users/YOU/.config/writune"]
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+```
+
+### Claude Code
+
+Edit `~/.claude.json` and merge the Writune object into the existing `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "writune": {
+      "type": "stdio",
+      "command": "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe",
+      "args": ["-m", "writune", "serve", "--home", "C:/Users/YOU/.config/writune"]
+    }
+  }
+}
+```
+
+### OpenCode
+
+Edit `~/.config/opencode/opencode.json`, or an existing `opencode.jsonc`. With `XDG_CONFIG_HOME`, use its `opencode/opencode.json` location. For OpenCode V2, place the entry under `mcp.servers.writune`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "writune": {
+        "type": "local",
+        "command": [
+          "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe",
+          "-m",
+          "writune",
+          "serve",
+          "--home",
+          "C:/Users/YOU/.config/writune"
+        ],
+        "disabled": false
+      }
+    }
+  }
+}
+```
+
+## 4. Copy the complete bundled skill
+
+The pip package includes the skill at:
+
+- Windows: `C:/Users/YOU/Tools/writune-env/Lib/site-packages/writune/resources/skills/writune-polish/`.
+- macOS/Linux: `/home/YOU/tools/writune-env/lib/python3.11/site-packages/writune/resources/skills/writune-polish/`; replace `python3.11` with the actual interpreter version.
+
+Use a file manager or native copy command to copy the entire `writune-polish` folder, including `SKILL.md`, `references`, and `agents`, to the selected client's destination:
+
+| Client | User skill directory |
+| --- | --- |
+| Codex | `~/.agents/skills/writune-polish` |
+| Claude Code | `~/.claude/skills/writune-polish` |
+| OpenCode | `~/.config/opencode/skills/writune-polish`, or `$XDG_CONFIG_HOME/opencode/skills/writune-polish` |
+
+If an existing skill has been customized, compare and merge it yourself. The skill provides writing instructions; the MCP entry connects tools. Configure both.
+
+## 5. Verify and maintain the installation
+
+After editing the files, use the CLI for verification:
 
 ```powershell
-$writuneConfig = Join-Path $env:USERPROFILE '.config\writune'
-.\.writune-venv\Scripts\python.exe -m writune init --home $writuneConfig
-.\.writune-venv\Scripts\python.exe -m writune doctor --home $writuneConfig
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -m writune doctor --home C:/Users/YOU/.config/writune
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -m writune test-provider --home C:/Users/YOU/.config/writune
 ```
 
-### macOS / Linux
+On macOS/Linux, use your environment's Python and configuration directory with the same arguments. `doctor` includes a real stdio startup check. `test-provider` sends a short model request and consumes provider usage. Reconnect the client MCP, then confirm that `writune_submit`, `writune_status`, and `writune_result` are listed.
 
-```bash
-writune_config="$HOME/.config/writune"
-.writune-venv/bin/python -m writune init --home "$writune_config"
-.writune-venv/bin/python -m writune doctor --home "$writune_config"
-```
-
-### What Interactive Setup Configures
-
-1. **Upstream Responses API:** Base URL, port, and hidden API Key input (credentials are saved separately to `.env` in your config directory and are never mixed into `config.json`).
-2. **Language-Specific Polishing Models:** Model references use the `provider/model` format (retaining the full upstream model ID to the right of the first slash) for Chinese and English primary and fallback slots.
-   - 💡 *Recommended human-sounding models:* **DeepSeek V4.1**, **Gemini Flash / Gemini 4 series**, etc.
-3. **Workspaces & Runtime Governance:** Authorized workspace directories (`allowed_workspaces`), default style, concurrency limits, connection/first-token/inactivity/total timeouts, minimum TPS (`min_tps`), retry count, and temporary task file retention (`task_ttl_hours`).
-
-> For scripted or automated initialization, use `init --non-interactive --config-file <path>`. See [Configuration](docs/configuration.md) for full JSON templates and model-level overrides.
-
----
-
-## 3️⃣ Register MCP & Companion Skill Automatically
-
-The registration script merges the Writune entry, preserves unrelated client settings and Codex TOML comments, and saves a pre-edit backup in OS temporary storage.
-
-### Windows PowerShell (Codex)
-
-```powershell
-.\.writune-venv\Scripts\python.exe scripts/register_mcp.py --client codex --executable "$PWD/.writune-venv/Scripts/writune.exe" --home $writuneConfig --install-skill
-```
-
-### macOS / Linux (Codex)
-
-```bash
-.writune-venv/bin/python scripts/register_mcp.py --client codex --executable "$PWD/.writune-venv/bin/writune" --home "$writune_config" --install-skill
-```
-
-### Client Options & Paths
-
-- **Claude Code:** Change `--client codex` to `--client claude-code`.
-- **Conflict Resolution:** If a different Writune entry already exists, inspect its path and pass `--replace` to update it.
-- **Custom Config File:** Pass `--config <path>` to target a non-default client configuration file.
-- **Windowless Execution on Windows:** Registration automatically binds `pythonw.exe` so that both the MCP server and the background worker run without opening a console window.
-
-| Client | User MCP Configuration | User Skill Location |
-| :--- | :--- | :--- |
-| **Codex** | `~/.codex/config.toml` (honors `CODEX_HOME`) | `~/.agents/skills/writune-polish` |
-| **Claude Code** | `mcpServers.writune` in `~/.claude.json` | `~/.claude/skills/writune-polish` |
-| **OpenCode** | `mcp.servers.writune` in `opencode.json` / `opencode.jsonc` | `.agents/skills/writune-polish` |
-
-After registration, reload your agent's MCP configuration and verify tool discovery. For manual JSON/TOML snippets and OpenCode setup, see **[MCP Integration](docs/mcp-integration.md)**.
+The embedded updater checks for stable releases published on PyPI, verifies hashes and compatibility, finishes active work, and updates the original directory. Inspect `writune update-status`. If it reports `manual_install_required`, use the same interpreter with `-m pip install --upgrade writune`, then reconnect the client. When updating separately installed customized skill copies, compare them. Disable automatic updates by setting `"auto_update": false` in `config.json`.

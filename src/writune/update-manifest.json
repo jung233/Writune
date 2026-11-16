@@ -10,18 +10,20 @@
       "platformdirs",
       "python-docx",
       "python-dotenv",
-      "tomlkit>=0.13,<1"
+      "tomlkit>=0.13,<1",
+      "packaging>=24"
     ],
     "entry-points": null,
     "requires-python": ">=3.11",
+    "resources_layout": 2,
     "scripts": {
       "writune": "writune.cli:app"
     }
   },
   "files": {
-    "__init__.py": "df3d315276b5876888282a7bc3a62ee005b6779abb32ab61748da260d2030843",
+    "__init__.py": "aa6dcf544418689a2fdf458f84069f15ad62f1218d779b71a0b9930371072bb3",
     "__main__.py": "9e463e6669e71389b9e08b75a938ec4b5bd979c0de1edea203a84d2f4051ce1f",
-    "cli.py": "29e220e1a70205d5576883499819637093ffb4388f693df7ebb60745a451e967",
+    "cli.py": "a4ebac709ce74999489084dd895af841f2751cd494245c2e8dbe276d5834242e",
     "config.py": "143f22052de2a2abab3935cbeac221c2952fddd5502bc5d79f8a829e7d1a7aa1",
     "files/__init__.py": "fc8ac01494fe81c9c2f6fb4e46478982f0cc377a8eba55c41cbb6ba98eca9ccd",
     "files/apply.py": "4f4cce3255b388fe54ebea2771fb49d0259cf2dbdbfb9b07e3f1394ec0acbac4",
@@ -30,6 +32,7 @@
     "files/temporary.py": "9549e90f622732e9dd730b473769a5227e6d49c94cead1d35a2ce2a4f091bf07",
     "files/text.py": "03c15eb716203938f9dad0fba45824d9466672ae82b11ef69fd5493fec30ef4d",
     "files/workspace.py": "31b88af2005cbf7ceb008667e964e99aeadb5b1610171bbe7e91672a71a27e8c",
+    "integration.py": "120527b08644bab08f718051473b5fe4496c7082d8ced7b20cd9f6eb6bfcc10b",
     "mcp_server.py": "6e2dccef782926b298a0d480e148ad04e765336a93a0c62bb195d52563417238",
     "polishing/__init__.py": "fa9e933813f91f3152088dae68bcd2eba0dd8b857e4d79408c27e3b6b9282c87",
     "polishing/errors.py": "5f16aa5eaf80fd2b57ca6ed9cc7c35fe4238047b5b7b12c01238cd6e250f2bd3",
@@ -46,6 +49,19 @@
     "providers/registry.py": "04f5eb4a831e2f9c016a0d1ba652cf3c4cac62e6d84403b4878dc7f4c00b600f",
     "providers/responses.py": "48692dd8c22cc7f881bafab3a040ab98f23f35f1d753c7e5047f1482da3a6635",
     "providers/tps.py": "c1bdc5272cde61f48757de46b52171452b97bfd15209d4afc218ce1197034f67",
+    "resources/docs/INSTALL_PROMPT.md": "fa49cb806c7980eb53d78033489211c7b3d72ca824d69d0bdfe538f441d53d1b",
+    "resources/docs/MANUAL_INSTALL.md": "8aa23ab22c1aca1d57ed693b645101e57a9da6c4ab30e14c0f78bd62f2602ff7",
+    "resources/docs/MANUAL_INSTALL.zh-CN.md": "05fdd89a35cc5f3d4eceb84e8600d4f7775b6eb9c236d2c2b69088ece8f3f833",
+    "resources/docs/README.en.md": "0a912343a5df07e1c8dfcf4e81c463d31ce07bc39e95af9f7a9e5519d2084bc1",
+    "resources/docs/README.md": "4c18cd098df66c63fbfd48d48a09b36d0bd2d4a192d5128d9770693502b2be61",
+    "resources/skills/writune-polish/SKILL.md": "e2fc72c3cb2f19267754578eb66400c150dd1e2bb765dad816a8410d089c0ac9",
+    "resources/skills/writune-polish/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935",
+    "resources/skills/writune-polish/references/error-handling.md": "b1a0f5999ddfb42b408384308255898b8fc540ee4d55b98ba4c1b8b7dbc3d305",
+    "resources/skills/writune-polish/references/file-handoff.md": "2e5a4a6854ac95a7e60b4d80f50a3fb694188b1c34c26c91467508b25f8eced5",
+    "resources/skills/writune-polish/references/sepia-license.md": "eedc7cf92900018714a81489dc4f0c450b98ce2e7e589de7bedb38e0fa237fb7",
+    "resources/skills/writune-polish/references/sepia-method.md": "46fea77e4be6d52d7eb17d179075989bd7b8d0200b7c46c38ee0ff16a0b20d6c",
+    "resources/skills/writune-polish/references/style-profiles.md": "81ad7752aac1c7016c0b419aef21949a5af1c2122d2084d31e9f408b56ac97a4",
+    "resources/skills/writune-polish/references/workflows.md": "a74e23497297e8310190aaf779854f501335df0faf792fec9f27de95f42fc7a2",
     "runtime.py": "703887da5b57c30b4d31c23901901771e1366370c6c5f50f354b196eae6a532f",
     "schemas.py": "e6de05fef21b8e280b862f52e9b8bba2a4ccbbb90d07ed50af6c3f9ebf893413",
     "service.py": "3053ba746ea535db0557af76b378ddf67a8e2c67ca98ffb8dcb044eb9dba3963",
@@ -59,8 +75,8 @@
     "tasks/worker.py": "59ca4c286a5c522f7ebbe9b64804f90d74d4a6d270dd1d95bfa4f0020fb26cb1",
     "telemetry/__init__.py": "194c62f8c865eb2048001b12e33a0974268306555a60e064ad6800e9a71caeba",
     "telemetry/metrics.py": "a047d0b60559a824eb4f77b624c1021dd8b82038106b0bc5d60251116046bfd3",
-    "updates.py": "22794bb244fbb462bdf58d6adcb94136fb9e4a8848e1273003347158e2bf1551"
+    "updates.py": "142f067962a842d0ad0d7da29d1179cd5fd70f0026ac74ffe1e22a566426fced"
   },
   "schema": 1,
-  "version": "0.1.1"
+  "version": "0.1.2"
 }

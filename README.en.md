@@ -107,15 +107,57 @@ The workflow follows `source_path → async queue → result_path → determinis
 
 ## 🚀 Installation & Quick Start
 
-### ⚡ 1. One-Step Harness Installation (Recommended)
+Choose one of three routes. The automatic Prompt and PyPI routes share the package CLI; the fully manual route shows every configuration file and client entry.
 
-Hand **[INSTALL_PROMPT.md](INSTALL_PROMPT.md)** to your coding agent (Claude Code, Codex, or OpenCode) and say:
+| Route | Who it is for | Start here |
+| --- | --- | --- |
+| Automatic Prompt | Let a coding agent install, configure and verify Writune | [INSTALL_PROMPT.md](INSTALL_PROMPT.md) |
+| PyPI / pip | Run commands and let the CLI write configuration | Commands below |
+| Fully manual | Create the environment, JSON/.env, MCP entries and skill files yourself | [Manual guide](MANUAL_INSTALL.md) |
 
-> *"Please execute `INSTALL_PROMPT.md` to complete Writune's isolated installation, configuration, MCP & Skill registration, and end-to-end verification."*
+### Automatic Prompt
 
-- **Recommended Polishing Models:** During setup, configure natural, cost-effective models such as **DeepSeek V4.1** or the **Gemini Flash / Gemini 4 series**.
-- **Isolated Environment:** Installs into `.writune-venv` without touching your existing Python/Conda environments, `PATH`, or your registry.
-- 🛠️ **Prefer to set things up step by step in the terminal?** See the **[Manual Installation Guide](MANUAL_INSTALL.md)**.
+Give [INSTALL_PROMPT.md](INSTALL_PROMPT.md) to Codex, Claude Code, or OpenCode and ask:
+
+> Install Writune from PyPI using this Prompt, configure it, register MCP, install the skill and verify the setup.
+
+The agent creates a dedicated Python environment, installs from PyPI, and follows the same CLI sequence below. A repository checkout and project installation scripts are not necessary.
+
+### PyPI: one shared CLI workflow
+
+Use **Python 3.11+** in a newly created and activated virtual environment:
+
+```sh
+pip install --upgrade "writune>=0.1.2"
+writune init
+writune mcp register --client codex --install-skill
+writune doctor
+```
+
+`writune init` collects the Responses API URL, a hidden API key, Chinese/English primary and fallback models, authorized workspaces and runtime settings. Credentials are saved separately in the configuration directory's `.env`. Select `codex`, `claude-code` or `opencode` with `--client`; register each client separately. On Windows, registration uses the current environment's `pythonw.exe` for windowless background execution.
+
+Create an environment with `python -m venv .writune-venv`, then activate it with `.\.writune-venv\Scripts\Activate.ps1` on Windows. On macOS/Linux, use `python3 -m venv .writune-venv` and `source .writune-venv/bin/activate`. If the environment is not activated, invoke that environment's absolute Python path with `-m writune`; see the [manual guide](MANUAL_INSTALL.md). To preserve an existing directory, choose a new environment path.
+
+Use the same `--home <directory>` for initialization, MCP registration, and diagnostics; the registered server records that configuration directory. To make later changes, use the CLI:
+
+```sh
+writune config show
+writune config set max_concurrency 4
+writune config set providers.primary.api_key
+writune mcp show --client codex
+writune skill install --client codex
+writune test-provider
+```
+
+`config show` masks keys. Setting an API key without a value prompts for the value with hidden input. `test-provider` makes a real, short model request. After registration, reconnect the client's Writune MCP.
+
+After changing runtime settings, let current tasks finish and idle workers exit, then reconnect MCP so new processes load the settings. New CLI calls read the saved configuration directly.
+
+### Fully manual setup and updates
+
+The [manual guide](MANUAL_INSTALL.md) does not use project installation scripts or configuration writers such as `init` and `mcp register`. It shows how to create `config.json`, `.env` and MCP entries, then copy the complete bundled skill.
+
+Automatic updates check for stable releases published on PyPI over HTTPS, verify the wheel's SHA-256, and update the original directory after active tasks finish. Local edits or changes to dependencies, Python requirements, or entry points defer automatic application. For a full upgrade, run `pip install --upgrade writune` in the same environment. Inspect `writune update-status`, or disable automatic updates with `writune config set auto_update false`. See [configuration](docs/configuration.md).
 
 ---
 
@@ -311,6 +353,7 @@ writune cleanup --all
 
 ```text
 src/writune/
+├── integration.py         # Package-native MCP registration and bundled skill installation
 ├── cli.py                 # Typer CLI & interactive/non-interactive initialization
 ├── mcp_server.py          # FastMCP stdio server & tool definitions
 ├── config.py              # Pydantic settings, secret isolation, model overrides
@@ -320,7 +363,7 @@ src/writune/
 ├── polishing/             # Scenes, styles, Sepia editorial workflow, span protection & validation
 ├── files/                 # Workspace authorization, atomic publication, encoding & DOCX handler
 └── telemetry/             # Rolling window performance, cache usage & price accounting
-scripts/                   # Isolated installation (.ps1/.sh), MCP/Skill registration, wheel verification
+scripts/                   # Developer checks, update manifests and package verification
 tests/                     # Unit, cross-process, crash-recovery, and real stdio integration tests
 .agents/skills/            # Companion writune-polish Agent Skill & editorial references
 docs/                      # Configuration, architecture, MCP integration, and acceptance guides
@@ -337,6 +380,7 @@ docs/                      # Configuration, architecture, MCP integration, and a
 
 ```powershell
 .\.writune-venv\Scripts\python.exe -m pytest -q
+.\.writune-venv\Scripts\python.exe scripts/build_update_manifest.py
 .\.writune-venv\Scripts\python.exe -m build
 .\.writune-venv\Scripts\python.exe scripts/verify_package.py
 ```

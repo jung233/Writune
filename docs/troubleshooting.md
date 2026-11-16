@@ -24,7 +24,7 @@ Use a unique marker of the form `{{WRITUNE:RESULTS_001}}`. For TXT, Markdown, an
 
 ## Windows console flashes
 
-Use the installed environment's `pythonw.exe` as the MCP command with `-m writune serve --home <CONFIG_HOME>`. `scripts/register_mcp.py` selects this entry automatically on Windows. Register the command directly; a PowerShell, cmd, `start` or terminal wrapper is unnecessary. Worker startup is windowless as well. Harness-side diagnostics must use hidden process creation and redirected streams.
+Use the installed environment's `pythonw.exe` as the MCP command with `-m writune serve --home <CONFIG_HOME>`. `writune mcp register --client codex` selects this entry automatically on Windows. Register the command directly; a PowerShell, cmd, `start` or terminal wrapper is unnecessary. Worker startup is windowless as well. Harness-side diagnostics must use hidden process creation and redirected streams.
 
 ## The result path is inaccessible
 
@@ -37,3 +37,7 @@ Cold-start estimates can be `null` because Writune has no successful history for
 ## MCP Tasks are not listed
 
 Writune uses its own submit/status/result/cancel tools. It does not advertise `io.modelcontextprotocol/tasks`; use `writune_status` with the Writune task or batch ID.
+
+## An automatic update is unavailable
+
+Inspect `writune update-status`. `local_changes` preserves modified package files; `manual_install_required` means the release needs `python -m pip install --upgrade writune` in the same environment. `check_failed` preserves the installation after a failed download or validation. Only stable, unyanked, and compatible PyPI wheels are applied automatically. The first upgrade from 0.1.1 to 0.1.2 requires pip for the new resource layout and dependency. Use `writune update` to retry after a network problem is resolved.

@@ -1,106 +1,149 @@
-<div align="center">
+# Writune 全手动安装指南
 
-# 🛠️ Writune 手动安装与配置指南
+[返回 README](README.md) · [English](MANUAL_INSTALL.md) · [自动 Prompt](INSTALL_PROMPT.md)
 
-**分步完成隔离 Python 环境创建、Provider 与模型初始化，以及客户端 MCP 与 Skill 注册。**
+本指南逐项创建环境、填写配置、编辑 MCP 条目并复制 Skill。不要运行项目安装脚本，也不要用 `writune init` 或 `writune mcp register` 代写配置。如果只想通过命令完成配置，请使用 README 中的 PyPI + CLI 流程。
 
-[⬅️ 返回主 README](README.md) &nbsp;·&nbsp; [🇺🇸 English Manual Install Guide](MANUAL_INSTALL.md) &nbsp;·&nbsp; [⚡ 一键自动安装 Prompt](INSTALL_PROMPT.md)
+## 1. 创建专用环境并安装包
 
-</div>
+需要 Python 3.11+。以下 `YOU`、路径、URL 和模型 ID 均为示例，执行前请替换为实际值。请选择一个全新的环境路径，不要覆盖已有环境。命令直接使用新环境的解释器，无需激活，不永久修改 PATH。
 
----
-
-> [!TIP]
-> **更推荐自动安装：**
-> 直接将 **[INSTALL_PROMPT.md](INSTALL_PROMPT.md)** 交给你的编码助手（Codex、Claude Code 或 OpenCode）即可全自动完成安装与验收。仅当你需要手动控制终端中的每一步命令时，参考本文档。
-
----
-
-## 1️⃣ 创建隔离虚拟环境
-
-获取源码并进入 Writune 目录，使用 **Python 3.11+**。
-
-### Windows PowerShell
+Windows PowerShell：
 
 ```powershell
-.\scripts\install.ps1
-# 如需包含开发与测试依赖：
-.\scripts\install.ps1 -WithDev
+python -I -m venv C:/Users/YOU/Tools/writune-env
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -I -m pip --isolated install --upgrade "writune>=0.1.2"
 ```
 
-### macOS / Linux
+macOS/Linux（macOS 的用户路径通常为 `/Users/YOU`）：
 
-```bash
-bash scripts/install.sh
-# 如需包含开发与测试依赖：
-bash scripts/install.sh --dev
+```sh
+python3 -I -m venv /home/YOU/tools/writune-env
+/home/YOU/tools/writune-env/bin/python -I -m pip --isolated install --upgrade 'writune>=0.1.2'
 ```
 
-### 环境安全保障与自定义参数
+## 2. 手工创建 Writune 配置
 
-- **专用 `.writune-venv` 隔离环境：** 所有依赖包均安装到新建的 `.writune-venv` 中，并写入 Writune 归属标识。现有的 Python、Conda、项目虚拟环境、用户 `site-packages`、系统 `PATH`、shell profile 与 Windows 注册表项均保持原样。
-- **未归属目录保护：** 若目标路径已存在非 Writune 创建的其他环境，安装脚本会拒绝修改并保护原有文件，同时提示选择新路径。
-- **自定义路径：** 在 PowerShell 中可通过 `-VenvPath`、`-PythonExecutable`，或在 Bash 中通过 `--venv`、`--python` 指定路径。
-- **使用 `uv` 托管私有 Python：** 若系统缺少合适版本的 Python，或已安装 `uv`，可追加 `-UseUv`（PowerShell）或 `--uv`（Bash），在安装目录内配置私有 managed Python。
+使用文件管理器创建一个独立的配置目录，例如 Windows 的 `C:/Users/YOU/.config/writune` 或 macOS/Linux 的 `/home/YOU/.config/writune`。下方选择的目录必须与 MCP 条目中的 `--home` 一致。
 
----
+在该目录创建 UTF-8 的 `config.json`：
 
-## 2️⃣ 初始化 Provider、模型与授权工作区
+```json
+{
+  "providers": {"primary": {"base_url": "https://provider.example/v1"}},
+  "zh_primary": "primary/ACTUAL_CHINESE_MODEL_ID",
+  "en_primary": "primary/ACTUAL_ENGLISH_MODEL_ID",
+  "zh_secondary": "",
+  "en_secondary": "",
+  "allowed_workspaces": ["C:/Users/YOU/Documents/drafts"],
+  "auto_update": true,
+  "update_check_seconds": 21600,
+  "default_style": "natural",
+  "max_concurrency": 4,
+  "connect_timeout": 8,
+  "first_token_timeout": 25,
+  "inactivity_timeout": 20,
+  "total_timeout": 120,
+  "min_tps": 6,
+  "retry_count": 1,
+  "task_ttl_hours": 24
+}
+```
 
-### Windows PowerShell
+将 URL 替换为上游提供的 Responses API Base URL，并保留实际端口和 `/v1` 等路径。将模型 ID 替换为该服务实际支持的名称；`primary/` 左侧为本地 Provider 名，右侧为完整模型 ID。没有备用模型时，保留空字符串。将 `allowed_workspaces` 改为允许 Writune 读写的实际绝对路径；macOS/Linux 使用相应的 `/Users/...` 或 `/home/...` 路径。
+
+同目录另建 `.env`，只存放密钥：
+
+```dotenv
+WRITUNE_PROVIDER_PRIMARY_API_KEY="YOUR_PRIVATE_KEY"
+```
+
+不要将密钥写入 MCP 配置，也不要放入源码仓库。中英文模型可以相同；独立备用 Provider、多模型参数和超时覆盖见[配置说明](docs/configuration.md)。SQLite 数据目录默认采用平台用户数据目录，原文快照和润色结果默认保存在系统临时目录，不必在项目中创建任务文件夹。
+
+## 3. 手工编辑客户端 MCP 配置
+
+先备份已有客户端配置，然后仅合并 `writune` 条目，保留其他设置。以下为 Windows 示例。在 macOS/Linux 上，将解释器改为 `/home/YOU/tools/writune-env/bin/python`，配置目录改为 `/home/YOU/.config/writune`；其余参数相同。Windows 使用环境中的 `pythonw.exe`，以避免后台弹出控制台。
+
+### Codex
+
+编辑 `~/.codex/config.toml`。若设置了 `CODEX_HOME`，则编辑该目录下的 `config.toml`：
+
+```toml
+[mcp_servers.writune]
+command = "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe"
+args = ["-m", "writune", "serve", "--home", "C:/Users/YOU/.config/writune"]
+enabled = true
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+```
+
+### Claude Code
+
+编辑 `~/.claude.json`，把以下 `writune` 对象合并进已有 `mcpServers`：
+
+```json
+{
+  "mcpServers": {
+    "writune": {
+      "type": "stdio",
+      "command": "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe",
+      "args": ["-m", "writune", "serve", "--home", "C:/Users/YOU/.config/writune"]
+    }
+  }
+}
+```
+
+### OpenCode
+
+编辑 `~/.config/opencode/opencode.json`，或编辑已有的 `opencode.jsonc`。如果设置了 `XDG_CONFIG_HOME`，则使用该目录下的 `opencode/opencode.json`。将条目放在 OpenCode V2 的 `mcp.servers.writune` 下：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "writune": {
+        "type": "local",
+        "command": [
+          "C:/Users/YOU/Tools/writune-env/Scripts/pythonw.exe",
+          "-m",
+          "writune",
+          "serve",
+          "--home",
+          "C:/Users/YOU/.config/writune"
+        ],
+        "disabled": false
+      }
+    }
+  }
+}
+```
+
+## 4. 手工复制配套 Skill
+
+完整 Skill 已包含在 pip 安装的包中，目录为：
+
+- Windows：`C:/Users/YOU/Tools/writune-env/Lib/site-packages/writune/resources/skills/writune-polish/`
+- macOS/Linux：`/home/YOU/tools/writune-env/lib/python3.11/site-packages/writune/resources/skills/writune-polish/`，把 `python3.11` 换成实际解释器版本。
+
+使用文件管理器或原生复制命令，将整个 `writune-polish` 文件夹（包括 `SKILL.md`、`references` 和 `agents`）复制到以下目标路径：
+
+| 客户端 | 用户级 Skill 目标目录 |
+| --- | --- |
+| Codex | `~/.agents/skills/writune-polish` |
+| Claude Code | `~/.claude/skills/writune-polish` |
+| OpenCode | `~/.config/opencode/skills/writune-polish`，或 `$XDG_CONFIG_HOME/opencode/skills/writune-polish` |
+
+如果目标已有定制内容，先比较并自行合并。Skill 提供写作指导，MCP 条目提供工具连接，两者都需要正确配置。
+
+## 5. 验收与后续升级
+
+配置完成后可用 CLI 检查，不会代写上述配置文件：
 
 ```powershell
-$writuneConfig = Join-Path $env:USERPROFILE '.config\writune'
-.\.writune-venv\Scripts\python.exe -m writune init --home $writuneConfig
-.\.writune-venv\Scripts\python.exe -m writune doctor --home $writuneConfig
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -m writune doctor --home C:/Users/YOU/.config/writune
+& C:/Users/YOU/Tools/writune-env/Scripts/python.exe -m writune test-provider --home C:/Users/YOU/.config/writune
 ```
 
-### macOS / Linux
+macOS/Linux 使用各自环境中的 Python 路径和配置目录，以相同参数运行。`doctor` 包含真实 stdio 启动检查；`test-provider` 会发送短模型请求并产生使用量。随后重连客户端 MCP，确认工具列表中出现 `writune_submit`、`writune_status` 和 `writune_result`。
 
-```bash
-writune_config="$HOME/.config/writune"
-.writune-venv/bin/python -m writune init --home "$writune_config"
-.writune-venv/bin/python -m writune doctor --home "$writune_config"
-```
-
-### 交互式初始化配置项
-
-1. **Responses API 连接信息：** 上游服务地址、端口，以及以隐藏输入方式填写的 API Key（凭据单独保存在配置目录下的 `.env` 中，绝不混入 `config.json`）。
-2. **中英文首选模型与备用模型：** 采用 `provider/model` 格式（第一个斜杠右侧保留上游的完整模型 ID），中英文可设为同一模型，也可分别指定。
-   - 💡 *推荐选用“说人话”、文风自然的低成本高性价比模型：* 如 **DeepSeek V4.1**、**Gemini Flash / Gemini 4 系列** 等。
-3. **授权工作区与运行策略：** 授权读写目录（`allowed_workspaces`）、默认风格、并发上限、连接/首字/停顿/总超时、最低生成速率（`min_tps`）、重试次数及临时任务保留时长（`task_ttl_hours`）。
-
-> 自动化或脚本安装可使用 `init --non-interactive --config-file <path>`。完整的 JSON 配置结构及逐模型覆盖参数，详见 [配置说明](docs/configuration.md)。
-
----
-
-## 3️⃣ 自动注册客户端 MCP 与配套 Skill
-
-注册脚本会安全地合并 Writune 条目，保留客户端的其他配置以及 Codex 的 TOML 注释，并将修改前的备份保存到系统临时目录。
-
-### Windows PowerShell（接入 Codex）
-
-```powershell
-.\.writune-venv\Scripts\python.exe scripts/register_mcp.py --client codex --executable "$PWD/.writune-venv/Scripts/writune.exe" --home $writuneConfig --install-skill
-```
-
-### macOS / Linux（接入 Codex）
-
-```bash
-.writune-venv/bin/python scripts/register_mcp.py --client codex --executable "$PWD/.writune-venv/bin/writune" --home "$writune_config" --install-skill
-```
-
-### 客户端参数与路径说明
-
-- **接入 Claude Code：** 将 `--client codex` 改为 `--client claude-code`。
-- **更新已有冲突条目：** 若已存在指向不同路径的 Writune 条目，核实后追加 `--replace` 以更新。
-- **自定义客户端配置文件位置：** 追加 `--config <path>`。
-- **Windows 无窗口运行：** 注册脚本在 Windows 下会自动选用虚拟环境中的 `pythonw.exe` 启动 MCP；后台 Worker 也同样以无窗口方式启动，不会弹出黑色控制台窗口。
-
-| 客户端 | 用户级 MCP 配置文件 | 用户级 Skill 安装位置 |
-| :--- | :--- | :--- |
-| **Codex** | `~/.codex/config.toml`（支持 `CODEX_HOME`） | `~/.agents/skills/writune-polish` |
-| **Claude Code** | `~/.claude.json` 中的 `mcpServers.writune` | `~/.claude/skills/writune-polish` |
-| **OpenCode** | `opencode.json` / `opencode.jsonc` 中的 `mcp.servers.writune` | `.agents/skills/writune-polish` |
-
-注册完成后，让编码助手刷新 MCP 配置并确认工具可被发现即可。手动配置示例及 OpenCode 接入方式详见 **[MCP 集成说明](docs/mcp-integration.md)**。
+包内自动更新只读取 PyPI 正式稳定版本，通过哈希和兼容性校验后在原目录更新，当前请求先完成。`writune update-status` 显示状态。若提示 `manual_install_required`，在同一环境的 Python 后运行 `-m pip install --upgrade writune`，然后重连客户端。自定义 Skill 的独立副本需另行比较更新。要禁用自动更新，在 `config.json` 中设置 `"auto_update": false`。

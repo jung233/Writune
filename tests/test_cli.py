@@ -12,6 +12,37 @@ from writune.config import ProviderConfig, Settings
 runner = CliRunner()
 
 
+def test_version_is_available_without_a_subcommand():
+    from writune import __version__
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == __version__
+
+
+def test_noninteractive_init_accepts_environment_secret_without_a_key_argument(tmp_path, monkeypatch):
+    monkeypatch.setenv("WRITUNE_PROVIDER_PRIMARY_API_KEY", "private-environment-key")
+    home = tmp_path / "config"
+    result = runner.invoke(app, [
+        "init", "--non-interactive", "--home", str(home),
+        "--primary-url", "https://provider.example/v1",
+        "--zh-primary-model", "zh-model", "--en-primary-model", "en-model",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "private-environment-key" not in result.output
+    assert Settings.load(home).providers["primary"].api_key.get_secret_value() == "private-environment-key"
+    assert "private-environment-key" not in (home / "config.json").read_text()
+
+
+def test_update_command_reports_a_full_install_requirement(monkeypatch):
+    from writune import updates
+    monkeypatch.setattr(updates, "check_and_update", lambda root, interval: {
+        "status": "manual_install_required", "available_version": "0.2.0",
+    })
+    result = runner.invoke(app, ["update"])
+    assert result.exit_code == 1
+    assert json.loads(result.output)["status"] == "manual_install_required"
+
+
 def test_init_non_interactive_saves_credentials_separately_and_show_redacts(tmp_path):
     home = tmp_path / "config"
     data = tmp_path / "data"

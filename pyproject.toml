@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "writune"
-version = "0.1.1"
+version = "0.1.2"
 description = "An asynchronous AI writing polisher for MCP agents"
 readme = "README.en.md"
 license = "MIT"
@@ -21,6 +21,7 @@ dependencies = [
   "python-docx",
   "python-dotenv",
   "tomlkit>=0.13,<1",
+  "packaging>=24",
 ]
 
 [project.urls]
@@ -39,15 +40,10 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+namespaces = false
 
 [tool.setuptools.package-data]
-writune = ["update-manifest.json"]
-
-[tool.setuptools.data-files]
-"share/writune" = ["INSTALL_PROMPT.md", "README.md", "README.en.md", "MANUAL_INSTALL.md", "MANUAL_INSTALL.zh-CN.md"]
-"share/writune/skills/writune-polish" = [".agents/skills/writune-polish/SKILL.md"]
-"share/writune/skills/writune-polish/agents" = [".agents/skills/writune-polish/agents/openai.yaml"]
-"share/writune/skills/writune-polish/references" = [".agents/skills/writune-polish/references/*.md"]
+writune = ["update-manifest.json", "resources/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
