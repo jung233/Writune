@@ -12,7 +12,7 @@
 
 只询问尚未提供的信息：客户端（`codex`、`claude-code`、`opencode`，可提供多个）、新环境路径、Writune 配置目录、Responses API Base URL、API Key 的安全输入方式、中英文首选模型、可选备用模型以及授权工作区。模型名称应使用上游的真实 ID，不要猜测名称。可复用明确指定的现有 Writune 配置；读取时不要输出密钥。
 
-推荐并发 4，首文本超时 25 秒，总超时 120 秒，重试 1 次，任务 TTL 24 小时。若用户已有选择，则按该选择设置。说明：真实 Provider 验证会向所选服务发送合成短文本，并产生少量使用量。
+推荐并发 4，首文本超时 70 秒，总超时 420 秒，重试 1 次，任务 TTL 24 小时。若用户已有选择，则按该选择设置。说明：真实 Provider 验证会向所选服务发送合成短文本，并产生少量使用量。
 
 ## 1. 创建环境并从 PyPI 安装
 
@@ -50,8 +50,8 @@ python3 -I -m venv /home/YOU/tools/writune-env
   "allowed_workspaces": ["ABSOLUTE_WORKSPACE_PATH"],
   "auto_update": true,
   "max_concurrency": 4,
-  "first_token_timeout": 25,
-  "total_timeout": 120,
+  "first_token_timeout": 70,
+  "total_timeout": 420,
   "retry_count": 1
 }
 ```

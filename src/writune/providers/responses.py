@@ -303,9 +303,9 @@ class ResponsesProvider:
             raise ProviderError("PROVIDER_NOT_CONFIGURED", "The provider API key is not configured.", False)
 
         connect_timeout = self._timeout("connect_timeout", 8.0, provider)
-        first_timeout = self._timeout("first_token_timeout", 25.0, provider)
+        first_timeout = self._timeout("first_token_timeout", 70.0, provider)
         inactivity_timeout = self._timeout("inactivity_timeout", 20.0, provider)
-        total_timeout = self._timeout("total_timeout", 120.0, provider)
+        total_timeout = self._timeout("total_timeout", 420.0, provider)
         min_tps = float(getattr(self.settings, "min_tps", 6.0))
         window = float(getattr(self.settings, "tps_window", 10.0))
         warmup_tokens = int(getattr(self.settings, "tps_warmup_tokens", 30))

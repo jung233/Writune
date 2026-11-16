@@ -205,9 +205,9 @@ class Settings(BaseSettings):
     custom_templates: dict[str, str | dict[str, str]] = Field(default_factory=dict)
 
     connect_timeout: float = Field(default=8, gt=0)
-    first_token_timeout: float = Field(default=25, gt=0)
+    first_token_timeout: float = Field(default=70, gt=0)
     inactivity_timeout: float = Field(default=20, gt=0)
-    total_timeout: float = Field(default=120, gt=0)
+    total_timeout: float = Field(default=420, gt=0)
     min_tps: float = Field(default=6, gt=0)
     tps_window: float = Field(default=10, gt=0)
     tps_warmup_tokens: int = Field(default=30, ge=0)

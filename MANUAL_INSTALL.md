@@ -41,9 +41,9 @@ Create a UTF-8 `config.json`:
   "default_style": "natural",
   "max_concurrency": 4,
   "connect_timeout": 8,
-  "first_token_timeout": 25,
+  "first_token_timeout": 70,
   "inactivity_timeout": 20,
-  "total_timeout": 120,
+  "total_timeout": 420,
   "min_tps": 6,
   "retry_count": 1,
   "task_ttl_hours": 24

@@ -100,9 +100,9 @@ For a single provider, the compatibility variables `WRITUNE_PROVIDER_URL` and `W
 | `lease_seconds` | 15 | Worker/task lease interval |
 | `task_ttl_hours` | 24 | Retention age before terminal task cleanup |
 | `connect_timeout` | 8s | Provider connection timeout |
-| `first_token_timeout` | 25s | Wait for first nonempty text |
+| `first_token_timeout` | 70s | Wait for first nonempty text |
 | `inactivity_timeout` | 20s | Maximum wait without generation progress |
-| `total_timeout` | 120s | Maximum duration for one provider attempt |
+| `total_timeout` | 420s | Maximum duration for one provider attempt |
 | `min_tps` | 6 | Minimum generation rate threshold after warm-up |
 
 Provider-level settings can override concurrency, model concurrency, capability flags, request parameters, cache options, tokenizers, and timeouts. A provider base URL must be an absolute HTTP or HTTPS URL.

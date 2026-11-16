@@ -21,10 +21,10 @@
     }
   },
   "files": {
-    "__init__.py": "aa6dcf544418689a2fdf458f84069f15ad62f1218d779b71a0b9930371072bb3",
+    "__init__.py": "7aa42c43daab1ede8f575d81ca755b3d02c910f1a71eda2f864e4ed41712eee0",
     "__main__.py": "9e463e6669e71389b9e08b75a938ec4b5bd979c0de1edea203a84d2f4051ce1f",
-    "cli.py": "a4ebac709ce74999489084dd895af841f2751cd494245c2e8dbe276d5834242e",
-    "config.py": "143f22052de2a2abab3935cbeac221c2952fddd5502bc5d79f8a829e7d1a7aa1",
+    "cli.py": "7710f95ceafb13ad013d417beb6db41501060cd37b5710e081efe97f92331693",
+    "config.py": "a3f86cf0b844e7a6d962df1276cc7f0b1a7201513e74c70c5815caf07071070b",
     "files/__init__.py": "fc8ac01494fe81c9c2f6fb4e46478982f0cc377a8eba55c41cbb6ba98eca9ccd",
     "files/apply.py": "4f4cce3255b388fe54ebea2771fb49d0259cf2dbdbfb9b07e3f1394ec0acbac4",
     "files/atomic.py": "19ff794c1255060dd9cf59322eff40bab5537fceaa71ff73bb9590f8e1bab921",
@@ -47,11 +47,11 @@
     "providers/base.py": "8ccfbc06a96f3fd225fef0ce146fa7f559246d83c48416ddb6381cae67772789",
     "providers/errors.py": "fa973edeb1845da2c95aa33a13369b1e51dde4d2aafdb9bc8baecca6f24fa082",
     "providers/registry.py": "04f5eb4a831e2f9c016a0d1ba652cf3c4cac62e6d84403b4878dc7f4c00b600f",
-    "providers/responses.py": "48692dd8c22cc7f881bafab3a040ab98f23f35f1d753c7e5047f1482da3a6635",
+    "providers/responses.py": "20e287841eb99675ea13845e7022b5ee1df0bcb123abf7a6a25c76042ef03bf9",
     "providers/tps.py": "c1bdc5272cde61f48757de46b52171452b97bfd15209d4afc218ce1197034f67",
-    "resources/docs/INSTALL_PROMPT.md": "fa49cb806c7980eb53d78033489211c7b3d72ca824d69d0bdfe538f441d53d1b",
-    "resources/docs/MANUAL_INSTALL.md": "8aa23ab22c1aca1d57ed693b645101e57a9da6c4ab30e14c0f78bd62f2602ff7",
-    "resources/docs/MANUAL_INSTALL.zh-CN.md": "05fdd89a35cc5f3d4eceb84e8600d4f7775b6eb9c236d2c2b69088ece8f3f833",
+    "resources/docs/INSTALL_PROMPT.md": "c57f6b7dda66fb82c6250fa951b69b571d4378737e9f46db890d47e7eb122e6e",
+    "resources/docs/MANUAL_INSTALL.md": "d6653d0134f0a66f486fbb3f660c95c48233ed5667f86c7e9f47039683b46a41",
+    "resources/docs/MANUAL_INSTALL.zh-CN.md": "1854f0cf5b8399b2d0133a938406cf96e0b025e7ccc086ad59e7e5b64499c86a",
     "resources/docs/README.en.md": "0a912343a5df07e1c8dfcf4e81c463d31ce07bc39e95af9f7a9e5519d2084bc1",
     "resources/docs/README.md": "4c18cd098df66c63fbfd48d48a09b36d0bd2d4a192d5128d9770693502b2be61",
     "resources/skills/writune-polish/SKILL.md": "e2fc72c3cb2f19267754578eb66400c150dd1e2bb765dad816a8410d089c0ac9",
@@ -78,5 +78,5 @@
     "updates.py": "142f067962a842d0ad0d7da29d1179cd5fd70f0026ac74ffe1e22a566426fced"
   },
   "schema": 1,
-  "version": "0.1.2"
+  "version": "0.1.3"
 }
