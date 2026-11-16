@@ -35,4 +35,8 @@ Keep batch_id and task_ids; continue another section while the batch runs.
 
 Use context for constraints that apply across a section: terminology, audience, scientific scope, and writing goal. Do not store new facts or conclusions in context unless they are present in the user's source material. Context is versioned by content; after changing it, use the newly returned ID for new tasks instead of assuming old tasks were updated.
 
+For technical prose, use `topic` and `context_summary` to identify the discipline, objects, and relevant methods from the supplied source. Include enough context to distinguish the intended operation and the field's conventional verb-object expressions; a list of technical nouns alone may not resolve the meaning. Put only exact terms that must remain unchanged in `terminology`, since these terms are protected during polishing. Describe usage preferences and conventional collocations in `context_summary` or `constraints` instead of protecting an entire awkward phrase.
+
+When a paragraph depends on nearby text, supply the relevant neighboring sentences through `local_context` if the exposed submission schema supports it. Identify their relationship to the paragraph and provide only what resolves referents or technical meaning. Do not put changing paragraph-specific context into a shared context reused across unrelated passages. Missing or ambiguous context is not permission to infer an unstated experimental step or strengthen a finding.
+
 See [file-handoff.md](file-handoff.md) for shared versus remote paths and [error-handling.md](error-handling.md) before retrying a failed task.
