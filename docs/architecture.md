@@ -24,6 +24,10 @@ SQLite uses WAL mode. Queue claims, attempt records, cancellation flags, and wor
 
 The data directory contains `writune.sqlite3`, queue state and performance history. Per-task files (`original.txt`, `result.txt`, `result.json`) live in `Settings.task_dir`, a user- and database-scoped directory under the operating system's temporary directory. This separation applies even when `data_dir` points into a project. Default applied copies and apply records also use temporary storage. The OS can reclaim those files, and Writune's TTL cleanup removes expired terminal tasks. Missing task files produce `TASK_FILES_EXPIRED` without issuing another provider request. Upgrade copies retain historical originals.
 
+## Background updates
+
+The embedded update coordinator uses Python's standard library HTTP client to fetch revision metadata and a package ZIP over HTTPS. No Git executable or checkout is required. It verifies the shipped file manifest and dependencies, validates imports in temporary storage, drains registered workers, then replaces files in the original package directory with rollback on write failure. Installation-wide call and worker locks live under `.writune-runtime/updates`. Worker bootstrap acquires the import fence before loading Writune modules. An MCP service proxy detects changed Python sources and executes subsequent service methods in a fresh interpreter through JSON over private pipes; the original stdio transport remains connected. Before publishing package changes, run `python scripts/build_update_manifest.py` and include `src/writune/update-manifest.json` in the release. The manifest ships inside wheels as package data. Dependency and MCP schema changes retain the installation/reconnection boundary described in [configuration](configuration.md).
+
 ## Polishing pipeline
 
 Each task uses a stable prompt prefix for global instructions, language, scene, style, and shared context; the paragraph is variable input. A context ID is content-addressed, so changing the context produces a different ID. Markdown batch segmentation preserves input order and separators, and fenced blocks remain intact as one unit.

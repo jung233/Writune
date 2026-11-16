@@ -27,7 +27,8 @@ def _settings(home: Path | None) -> Settings:
 
 
 def _service(home: Path | None, *, start_worker: bool = True) -> Service:
-    return Service(_settings(home), start_worker=start_worker)
+    from writune.updates import UpdatingService
+    return UpdatingService(_settings(home), start_worker=start_worker)
 
 
 def _model_ref(provider_name: str, model_name: str) -> str:
@@ -729,6 +730,13 @@ def worker(home: Path | None = typer.Option(None, "--home", "--config-dir")) -> 
     from writune.tasks.worker import Worker
 
     asyncio.run(Worker(_settings(home)).run())
+
+
+@app.command('update-status')
+def update_status_command() -> None:
+    """Show the last background update outcome without making a network request."""
+    from writune.updates import update_status
+    _echo_json(update_status())
 
 
 @app.command()

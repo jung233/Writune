@@ -31,13 +31,46 @@ class Worker:
         self.stopping=True
 
     async def run(self):
+        from writune.updates import source_root, worker_registration, pending
+        root=source_root()
+        registration=worker_registration(self.settings)
         lock=ProcessLock(self.settings.data_dir/'worker.lock')
         if not lock.acquire():
             return
         try:
+            # Register under the same fence used by the updater's final scan.
+            await asyncio.to_thread(self._register_update_worker,root,registration)
             await self._run_owned()
         finally:
+            if registration is not None:
+                registration.release()
             lock.release()
+        if getattr(self,'update_drained',False) and not self.stopping:
+            # Preserve the loaded config snapshot: launch directories may already
+            # have been deleted, so Settings.load(home) cannot reconstruct secrets.
+            deadline=time.monotonic()+120
+            while pending(root) and time.monotonic()<deadline:
+                await asyncio.sleep(.1)
+            from writune.tasks.lifecycle import ensure_worker
+            if not self.stopping:
+                ensure_worker(self.settings,self.db)
+
+    @staticmethod
+    def _register_update_worker(root,registration):
+        from writune.updates import installation_call
+        import sys
+        startup=getattr(sys,'_writune_startup_lock',None)
+        if startup is not None:
+            try:
+                if registration is not None and not registration.acquire():
+                    raise RuntimeError('Worker update registration already owned')
+            finally:
+                startup.close()
+                del sys._writune_startup_lock
+            return
+        with installation_call(root):
+            if registration is not None and not registration.acquire():
+                raise RuntimeError('Worker update registration already owned')
 
     async def _run_owned(self):
         self.service.cleanup()
@@ -54,8 +87,13 @@ class Worker:
             except (NotImplementedError,RuntimeError):
                 pass
         idle=time.monotonic()
+        next_update_check=idle
         try:
             while not self.stopping:
+                if time.monotonic()>=next_update_check:
+                    from writune.updates import kick
+                    kick(self.settings)
+                    next_update_check=time.monotonic()+self.settings.update_check_seconds
                 with self.db.connect(immediate=True) as c:
                     r=c.execute("SELECT owner FROM workers WHERE name='main'").fetchone()
                     if not r or r[0]!=self.owner:
@@ -75,7 +113,12 @@ class Worker:
                             # No raw prompts, provider responses or secrets in logs.
                             self.db.finish(tid,self.owner,status='failed',outcome='none',finished_at=time.time(),error_code='LOCAL_ERROR',error_message='Local worker operation failed; original snapshot retained')
                         del self.active[tid]
-                while len(self.active)<self.settings.max_concurrency:
+                from writune.updates import pending,source_root
+                draining=pending(source_root())
+                if draining and not self.active:
+                    self.update_drained=True
+                    break
+                while not draining and len(self.active)<self.settings.max_concurrency:
                     row=self.db.claim(self.owner,self.settings)
                     if not row:
                         break

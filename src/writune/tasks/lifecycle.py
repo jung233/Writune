@@ -5,7 +5,7 @@ import sys
 import time
 import uuid
 from .process_lock import ProcessLock
-from writune.runtime import windowless_python, background_options
+from writune.runtime import windowless_python, background_options, worker_command
 
 def process_alive(pid):
     if not pid:
@@ -59,7 +59,7 @@ def ensure_worker(settings, db):
         snapshot=settings.model_copy(deep=True)
         snapshot.save(runtime)
         env['WRITUNE_HOME']=str(runtime)
-        p=subprocess.Popen([windowless_python(),'-m','writune.tasks.worker','--reservation',token,'--settings',str(runtime)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=env,close_fds=True,**background_options())
+        p=subprocess.Popen(worker_command(token,runtime),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=env,close_fds=True,**background_options())
         with db.connect(immediate=True) as c:
             c.execute("UPDATE workers SET pid=? WHERE name='main' AND owner=?",(p.pid,token))
         return True

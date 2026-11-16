@@ -35,7 +35,8 @@ def create_server(service: Service | None = None, *, home: str | Path | None = N
     def get_service() -> Service:
         nonlocal instance
         if instance is None:
-            instance = Service(Settings.load(home), start_worker=True)
+            from writune.updates import UpdatingService
+            instance = UpdatingService(Settings.load(home), start_worker=True)
         return instance
 
     server = FastMCP(

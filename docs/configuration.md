@@ -1,5 +1,15 @@
 # Configuration
 
+## Background updates
+
+Writune checks for updates over HTTPS after a CLI/MCP call, then every six hours while the MCP server or worker remains running. The updater is embedded in the Python package and uses the standard library HTTP client; users do not need Git, a Git checkout, pip, or an external updater to receive compatible code updates. It supports both wheel installations and editable source installations. Checking runs in a detached, windowless process. Set `auto_update: false` in `config.json` or `WRITUNE_AUTO_UPDATE=false` to disable it. `update_check_seconds` (environment: `WRITUNE_UPDATE_CHECK_SECONDS`) controls the interval, with a minimum of 60 seconds.
+
+The updater fetches the configured Writune repository's latest revision metadata and ZIP archive through HTTPS, validates the embedded SHA-256 file manifest, checks dependencies and imports, and replaces package files in the **original installation directory**. Candidate validation uses an OS temporary directory, automatically removed afterwards; no second installation is retained. Runtime locks and status live under `.writune-runtime/updates` inside the original project/package directory. Local package modifications, failed downloads/checksums/imports, or changed dependencies prevent automatic application. A file-write failure restores files already changed. Dependency, Python-requirement, or entry-point changes require a normal package installation. Distribution metadata and separately installed skills are maintained by that installation process.
+
+Workers stop claiming tasks and finish active requests before an update. They resume the durable queue in a fresh process after the package changes. Short service calls wait during this switch. If draining exceeds 90 seconds, the update is deferred and normal work resumes. An existing MCP connection stays open and routes subsequent service calls through a fresh interpreter using the same package directory. New MCP tools or changed tool schemas require reconnecting the client. The package directory must be writable by the running user.
+
+Run `writune update-status` to inspect the last result without network access. Common statuses include `updated`, `up_to_date`, `local_changes`, `manual_install_required`, and `check_failed`. Failed checks leave active requests running and retry after the configured interval. Configuration, credentials, task snapshots, and queue history stay in their existing locations.
+
 ## Model-specific settings
 
 Providers can define `models`, keyed by the exact upstream model ID. A model entry can override `capabilities`, `parameters`, `cache`, `tokenizer`, `timeouts` and `prices`. These maps merge with provider defaults. For example:

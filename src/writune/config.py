@@ -195,6 +195,8 @@ class Settings(BaseSettings):
     max_queue_size: int = Field(default=200, ge=1)
     retry_count: int = Field(default=1, ge=0)
     worker_idle_seconds: float = Field(default=30, gt=0)
+    auto_update: bool = True
+    update_check_seconds: float = Field(default=21600, ge=60)
     lease_seconds: float = Field(default=15, gt=0)
     task_ttl_hours: float = Field(default=24, gt=0)
     default_scene: str = "general_prose"
@@ -377,6 +379,8 @@ class Settings(BaseSettings):
 
 
 _SETTING_ENV_NAMES = {
+    "AUTO_UPDATE": "auto_update",
+    "UPDATE_CHECK_SECONDS": "update_check_seconds",
     "DATA_DIR": "data_dir",
     "ALLOWED_WORKSPACES": "allowed_workspaces",
     "PROVIDERS": "providers",
