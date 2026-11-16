@@ -203,6 +203,7 @@ def test_worker_drains_before_claiming_more_tasks(tmp_path,monkeypatch):
     from writune.tasks import lifecycle
     draining=False
     monkeypatch.setattr(updates,'source_root',lambda:None)
+    monkeypatch.setattr(updates,'kick',lambda settings:None)
     monkeypatch.setattr(updates,'pending',lambda root:draining)
     restarted=[]
     monkeypatch.setattr(lifecycle,'ensure_worker',lambda *args:restarted.append(True))

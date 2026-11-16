@@ -19,7 +19,7 @@
     }
   },
   "files": {
-    "__init__.py": "0f3af83cf040adb351f3552b1dd281c20fdf2779ed6e0405c5685dfcda427f0d",
+    "__init__.py": "df3d315276b5876888282a7bc3a62ee005b6779abb32ab61748da260d2030843",
     "__main__.py": "9e463e6669e71389b9e08b75a938ec4b5bd979c0de1edea203a84d2f4051ce1f",
     "cli.py": "29e220e1a70205d5576883499819637093ffb4388f693df7ebb60745a451e967",
     "config.py": "143f22052de2a2abab3935cbeac221c2952fddd5502bc5d79f8a829e7d1a7aa1",
@@ -53,7 +53,7 @@
     "tasks/artifacts.py": "25f4c9b08667ab558547b00816e35d0f3fd39d1698c829701c8a73309d70866f",
     "tasks/database.py": "9c07560ebd846a8c1724bbdd5907463b95012d2222fae6c78fca7812216ed266",
     "tasks/eta.py": "bcf153a7c04396260b059da186b93321b4b69b43a97a76220b41206e8140c0a1",
-    "tasks/lifecycle.py": "42496f762c82dccb88a7044e0b638e2dc5232e90307d0dded5bf3e15f292ec8e",
+    "tasks/lifecycle.py": "ae23445418ea9e4d1c9bbf4dc7d7883dffc8848ad49d34ae72a63a3de050ee58",
     "tasks/process_lock.py": "64a8b552946f41fd6454f9966ad4f836447a69372b80860e22a89df0fd468d3f",
     "tasks/protocol.py": "003e0c7d38b054ceb688d35e45011ed959ea68c7cd83b2fa8153e416a7754989",
     "tasks/worker.py": "59ca4c286a5c522f7ebbe9b64804f90d74d4a6d270dd1d95bfa4f0020fb26cb1",
@@ -62,5 +62,5 @@
     "updates.py": "22794bb244fbb462bdf58d6adcb94136fb9e4a8848e1273003347158e2bf1551"
   },
   "schema": 1,
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

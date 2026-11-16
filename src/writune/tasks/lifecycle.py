@@ -1,5 +1,6 @@
 """SQLite startup reservation and detached cross-platform worker process."""
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -28,6 +29,14 @@ def process_alive(pid):
             api.CloseHandle(handle)
     try:
         os.kill(pid,0)
+        if sys.platform.startswith('linux'):
+            try:
+                # kill(pid, 0) also succeeds for exited, unreaped processes.
+                stat=Path(f'/proc/{pid}/stat').read_text()
+                if stat.rsplit(')',1)[1].split()[0] in {'Z','X'}:
+                    return False
+            except (OSError,IndexError):
+                pass
         return True
     except ProcessLookupError:
         return False
@@ -41,7 +50,14 @@ def ensure_worker(settings, db):
         probe=ProcessLock(settings.data_dir/'worker.lock')
         if not probe.acquire():
             # A live but delayed process retains sockets and concurrency slots.
-            return False
+            if not r or not r['pid'] or process_alive(r['pid']):
+                return False
+            # Linux can expose a zombie before its final lock teardown completes.
+            deadline=time.monotonic()+.5
+            while not probe.acquire():
+                if time.monotonic()>=deadline:
+                    return False
+                time.sleep(.01)
         probe.release()
         if r and r['lease_until']>time.time() and (r['pid'] is None or process_alive(r['pid'])):
             return False

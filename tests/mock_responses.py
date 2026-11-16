@@ -330,6 +330,7 @@ def make_settings(
         "max_concurrency": 4,
         "max_queue_size": 200,
         "retry_count": 1,
+        "auto_update": False,
         "worker_idle_seconds": 0.2,
         "lease_seconds": 5,
         "connect_timeout": 2,

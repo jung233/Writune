@@ -1,11 +1,14 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "writune"
-version = "0.1.0"
+version = "0.1.1"
 description = "An asynchronous AI writing polisher for MCP agents"
+readme = "README.en.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   "mcp>=1.20,<2",
@@ -19,6 +22,11 @@ dependencies = [
   "python-dotenv",
   "tomlkit>=0.13,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jung233/Writune"
+Repository = "https://github.com/jung233/Writune"
+Issues = "https://github.com/jung233/Writune/issues"
 
 [project.scripts]
 writune = "writune.cli:app"

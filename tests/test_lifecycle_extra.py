@@ -9,6 +9,28 @@ from writune.tasks.worker import Worker
 from writune.tasks.lifecycle import ensure_worker
 from tests.mock_responses import MockResponsesServer,make_settings
 
+def test_dead_worker_waits_for_final_lock_release(tmp_path,monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from writune.tasks import lifecycle
+    settings=make_settings(tmp_path,'http://127.0.0.1:9/v1')
+    service=Service(settings,start_worker=False)
+    with service.db.connect(immediate=True) as c:
+        c.execute("INSERT INTO workers VALUES('main','dead-worker',?,1234)",(time.time()+30,))
+    lock=ProcessLock(settings.data_dir/'worker.lock')
+    assert lock.acquire()
+    monkeypatch.setattr(lifecycle,'process_alive',lambda pid:False)
+    monkeypatch.setattr(lifecycle.subprocess,'Popen',lambda *args,**kwargs:SimpleNamespace(pid=4321))
+    release=threading.Timer(.05,lock.release)
+    release.start()
+    try:
+        assert ensure_worker(settings,service.db) is True
+        with service.db.connect() as c:
+            assert c.execute("SELECT pid FROM workers WHERE name='main'").fetchone()[0]==4321
+    finally:
+        release.join()
+        lock.release()
+
 def _run_python(code,path):
     return subprocess.run([sys.executable,'-c',code,str(path)],capture_output=True,text=True,timeout=15,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
 
