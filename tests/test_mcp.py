@@ -52,6 +52,8 @@ async def test_real_stdio_handshake_discovers_typed_tools_and_calls_service(tmp_
             assert expected <= set(by_name)
             assert 'writune_merge_batch' in by_name
             assert 'max_concurrency' in by_name['writune_submit_batch'].inputSchema['properties']
+            segmentation = by_name['writune_submit_batch'].inputSchema['properties']['segmentation']
+            assert segmentation['enum'] == ['paragraph', 'section', 'document']
             assert by_name["writune_submit"].inputSchema["type"] == "object"
             assert by_name["writune_result"].outputSchema["type"] == "object"
             assert by_name["writune_status"].outputSchema["properties"]["status"]["enum"] == [
@@ -162,6 +164,8 @@ async def test_real_stdio_file_submit_result_and_apply(
                 assert payload["outcome"] == expected_outcome
                 assert payload["result_path"]
                 assert payload.get("text") is None
+                assert "text" not in payload
+                assert result.content == []
                 assert payload["fallback_used"] is (expected_outcome == "original_fallback")
                 if expected_outcome == "original_fallback":
                     assert payload["error"]["attempts"] == 2

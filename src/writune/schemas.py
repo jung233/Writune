@@ -17,6 +17,9 @@ class ContextCreated(Schema):
 
 class SubmitResponse(Schema):
     task_id: str
+    estimated_input_tokens: int | None = None
+    token_count_estimated: bool = True
+    warnings: list[str] = Field(default_factory=list)
     status: Literal["queued", "running", "completed", "failed", "cancelled"]
     estimated_seconds: float | None = None
     estimate_confidence: Literal["low", "medium", "high"] = "low"
@@ -29,6 +32,9 @@ class SubmitResponse(Schema):
 
 class BatchResponse(Schema):
     batch_id: str
+    estimated_input_tokens: int | None = Field(default=None, description='Largest individual task input estimate, not batch sum')
+    token_count_estimated: bool = True
+    warnings: list[str] = Field(default_factory=list)
     task_ids: list[str]
     accepted_count: int
     estimated_seconds: float | None = None
@@ -67,6 +73,9 @@ class ResultResponse(Schema):
     possible_duplicate_billing: bool = False
     polished: bool = False
     fallback_used: bool = False
+    review_required: bool = False
+    partial_output_path: str | None = None
+    partial_reasoning_path: str | None = None
     error: ResultError | None = None
     text: str | None = Field(default=None, description="Present only when inline_text=true")
 

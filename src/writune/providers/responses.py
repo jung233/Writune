@@ -21,7 +21,7 @@ from openai import (
 )
 
 from .base import ProviderError
-from .tps import SlidingTPS, TokenCounter
+from .tps import TokenCounter
 
 if TYPE_CHECKING:
     from writune.config import ProviderConfig, Settings
@@ -141,6 +141,61 @@ def _usage_metrics(response: object) -> tuple[int | None, int | None, int | None
         )
     )
     return input_tokens, output_tokens, cached, cache_write
+
+
+def _has_repeating_suffix(text: str, *, minimum_chars: int = 512, max_period: int = 256) -> bool:
+    """Return whether the recent suffix repeats exactly over at least 512 chars."""
+
+    if len(text) < minimum_chars:
+        return False
+    for period in range(1, min(max_period, len(text) // 4) + 1):
+        unit = text[-period:]
+        repetitions = 1
+        # Only inspect enough adjacent copies to establish the minimum suffix
+        # length. The recent buffer is bounded by the caller.
+        while repetitions < 4 or repetitions * period < minimum_chars:
+            start = len(text) - (repetitions + 1) * period
+            end = len(text) - repetitions * period
+            if start < 0 or text[start:end] != unit:
+                break
+            repetitions += 1
+        if repetitions * period >= minimum_chars and repetitions >= 4:
+            return True
+    return False
+
+
+class _StreamingApproxTokenCounter:
+    """Count approximate lexical tokens incrementally without rescanning output."""
+
+    def __init__(self) -> None:
+        self._tokens = 0
+        self._in_word = False
+
+    def observe(self, text: str) -> None:
+        for character in text:
+            codepoint = ord(character)
+            if (
+                0x3400 <= codepoint <= 0x4DBF
+                or 0x4E00 <= codepoint <= 0x9FFF
+                or 0xF900 <= codepoint <= 0xFAFF
+                or 0x3040 <= codepoint <= 0x30FF
+                or 0xAC00 <= codepoint <= 0xD7AF
+            ):
+                self._tokens += 1
+                self._in_word = False
+            elif character.isalnum() or character == "_":
+                if not self._in_word:
+                    self._tokens += 1
+                    self._in_word = True
+            elif character.isspace():
+                self._in_word = False
+            else:
+                self._tokens += 1
+                self._in_word = False
+
+    @property
+    def token_count(self) -> int:
+        return self._tokens
 
 
 class ResponsesProvider:
@@ -303,15 +358,8 @@ class ResponsesProvider:
             raise ProviderError("PROVIDER_NOT_CONFIGURED", "The provider API key is not configured.", False)
 
         connect_timeout = self._timeout("connect_timeout", 8.0, provider)
-        first_timeout = self._timeout("first_token_timeout", 70.0, provider)
-        inactivity_timeout = self._timeout("inactivity_timeout", 20.0, provider)
-        total_timeout = self._timeout("total_timeout", 420.0, provider)
-        min_tps = float(getattr(self.settings, "min_tps", 6.0))
-        window = float(getattr(self.settings, "tps_window", 10.0))
-        warmup_tokens = int(getattr(self.settings, "tps_warmup_tokens", 30))
-        warmup_seconds = float(getattr(self.settings, "tps_warmup_seconds", 10.0))
-        slow_windows = int(getattr(self.settings, "consecutive_slow_windows", 2))
-
+        first_timeout = self._timeout("first_token_timeout", 120.0, provider)
+        inactivity_timeout = self._timeout("inactivity_timeout", 120.0, provider)
         try:
             request_body = self._request_body(model, prompt, options, provider=provider)
         except ProviderError:
@@ -331,19 +379,44 @@ class ResponsesProvider:
         cached_input_tokens: int | None = None
         cache_write_tokens: int | None = None
         counter = TokenCounter(getattr(provider, "tokenizer", None))
-        tps = SlidingTPS(
-            min_tps=min_tps,
-            window_seconds=window,
-            warmup_tokens=warmup_tokens,
-            warmup_seconds=warmup_seconds,
-            consecutive_slow_windows=slow_windows,
-            counter=counter,
+        request_text = "\n\n".join(
+            value
+            for value in (request_body.get("instructions"), request_body.get("input"))
+            if isinstance(value, str) and value
         )
+        input_counter = _StreamingApproxTokenCounter()
+        input_counter.observe(request_text)
+        estimated_input_token_count = max(
+            1,
+            input_counter.token_count,
+            (len(request_text) + 3) // 4,
+        )
+        configured_input_token_count = counter.count(request_text)
+        input_token_estimate = max(1, configured_input_token_count)
+        output_counter = _StreamingApproxTokenCounter()
+        configured_output_token_count = 0
+        configured_output_pending_parts: list[str] = []
+        configured_output_pending_chars = 0
+        observed_output_chars = 0
+
+        def input_guard_tokens() -> int:
+            if counter.estimated:
+                return estimated_input_token_count
+            return input_token_estimate
+
+        def output_guard_tokens() -> int:
+            if counter.estimated:
+                return max(output_counter.token_count, (observed_output_chars + 3) // 4)
+            pending_text = "".join(configured_output_pending_parts)
+            pending_tokens = counter.count(pending_text)
+            if counter.estimated:
+                return max(output_counter.token_count, (observed_output_chars + 3) // 4)
+            return configured_output_token_count + pending_tokens
 
         timeout = httpx.Timeout(
             connect=connect_timeout,
             read=None,
-            write=total_timeout,
+            write=connect_timeout,
             pool=connect_timeout,
         )
         http_client = httpx.AsyncClient(transport=self._transport, timeout=timeout)
@@ -357,137 +430,188 @@ class ResponsesProvider:
 
         async def next_event(iterator: Any) -> object:
             now = time.monotonic()
-            deadlines = [started_at + total_timeout]
             if first_text_at is None:
-                deadlines.append(started_at + first_timeout)
+                deadline = started_at + first_timeout
             elif last_text_at is not None:
-                deadlines.append(last_text_at + inactivity_timeout)
-            deadline = min(deadlines)
+                deadline = last_text_at + inactivity_timeout
+            else:
+                deadline = started_at + first_timeout
             remaining = deadline - now
             if remaining <= 0:
-                if now >= started_at + total_timeout:
-                    raise ProviderError("TOTAL_TIMEOUT", "The provider attempt exceeded its total time limit.")
                 if first_text_at is None:
                     raise ProviderError("FIRST_TOKEN_TIMEOUT", "No output text arrived before the first-text timeout.")
                 raise ProviderError("INACTIVITY_TIMEOUT", "The provider stopped producing output text.")
             try:
                 return await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
             except asyncio.TimeoutError:
-                now = time.monotonic()
-                if now >= started_at + total_timeout:
-                    raise ProviderError("TOTAL_TIMEOUT", "The provider attempt exceeded its total time limit.") from None
                 if first_text_at is None:
                     raise ProviderError("FIRST_TOKEN_TIMEOUT", "No output text arrived before the first-text timeout.") from None
                 raise ProviderError("INACTIVITY_TIMEOUT", "The provider stopped producing output text.") from None
 
         started_at: float | None = None
+        reasoning_text = ""
+        visible_recent = ""
+        reasoning_recent = ""
 
-        def record_delta(value: str, key: tuple[int, int], *, observed_at: float | None = None) -> None:
-            nonlocal first_text_at, last_text_at
+        def accumulated_visible_text() -> str:
+            return "".join(delta_texts[key] for key in sorted(delta_texts))
+
+        def raise_output_guard(code: str, message: str) -> None:
+            error = ProviderError(code, message, False)
+            error.partial_text = accumulated_visible_text()
+            if reasoning_text:
+                error.partial_reasoning = reasoning_text
+            raise error
+
+        def record_delta(
+            value: str,
+            key: tuple[int, int],
+            *,
+            reasoning: bool = False,
+            observed_at: float | None = None,
+        ) -> None:
+            nonlocal first_text_at, last_text_at, reasoning_text, visible_recent, reasoning_recent
             if not value:
                 return
             now = observed_at if observed_at is not None else time.monotonic()
             if first_text_at is None:
                 first_text_at = now
             last_text_at = now
-            delta_texts[key] = delta_texts.get(key, "") + value
-            low_tps = tps.observe(value, now)
+            if reasoning:
+                reasoning_text += value
+                reasoning_recent = (reasoning_recent + value)[-1024:]
+            else:
+                delta_texts[key] = delta_texts.get(key, "") + value
+                visible_recent = (visible_recent + value)[-1024:]
+            # Count both visible and reasoning deltas for the relative guards,
+            # while retaining a separate visible response. The fallback counter
+            # is incremental so long streams do not trigger cumulative rescans.
+            nonlocal configured_output_token_count, configured_output_pending_parts
+            nonlocal configured_output_pending_chars, observed_output_chars
+            output_counter.observe(value)
+            observed_output_chars += len(value)
+            if not counter.estimated:
+                configured_output_pending_parts.append(value)
+                configured_output_pending_chars += len(value)
+                while configured_output_pending_chars >= 1024 and not counter.estimated:
+                    pending_text = "".join(configured_output_pending_parts)
+                    offset = 0
+                    while len(pending_text) - offset >= 1024 and not counter.estimated:
+                        whitespace = pending_text.rfind(" ", offset, offset + 1024)
+                        cut = whitespace + 1 if whitespace > offset else offset + 1024
+                        configured_output_token_count += counter.count(pending_text[offset:cut])
+                        offset = cut
+                    remainder = pending_text[offset:]
+                    configured_output_pending_parts = [remainder] if remainder else []
+                    configured_output_pending_chars = len(remainder)
             elapsed = max(0.0, now - started_at) if started_at is not None else 0.0
-            measured_tps = tps.generation_tps
-            if measured_tps <= 0 and started_at is not None:
-                measured_tps = tps.token_count / max(now - first_text_at, 0.001)
+            observed_tokens = output_guard_tokens()
+            measured_tps = observed_tokens / max(now - first_text_at, 0.001)
             self.last_metrics.update(
-                output_tokens=tps.token_count,
+                output_tokens=observed_tokens,
                 first_token_latency=max(0.0, first_text_at - started_at) if started_at is not None else None,
                 generation_tps=measured_tps,
                 total_elapsed=elapsed,
-                tps_estimated=counter.estimated,
+                tps_estimated=True,
             )
-            if low_tps:
-                raise ProviderError("LOW_TPS", "The provider output stayed below the configured token rate.")
+            if observed_tokens >= input_guard_tokens() * 100:
+                raise_output_guard(
+                    "OUTPUT_LIMIT_EXCEEDED",
+                    "The provider output exceeded the configured relative output limit.",
+                )
+            if observed_tokens >= input_guard_tokens() * 20 and (
+                _has_repeating_suffix(visible_recent) or _has_repeating_suffix(reasoning_recent)
+            ):
+                raise_output_guard(
+                    "REPETITIVE_OUTPUT",
+                    "The provider output contained a sustained repeating suffix.",
+                )
 
         try:
             # Start the attempt clock only after local setup and tokenizer
             # discovery, immediately before opening the upstream request.
             started_at = time.monotonic()
-            async with asyncio.timeout(total_timeout):
-                async with client:
-                    sdk_arguments = dict(request_body)
-                    sdk_arguments.pop("stream", None)
-                    try:
-                        stream = await asyncio.wait_for(
-                            client.responses.create(stream=True, **sdk_arguments),
-                            timeout=min(first_timeout, total_timeout),
-                        )
-                    except asyncio.TimeoutError:
-                        if time.monotonic() >= started_at + total_timeout:
-                            raise ProviderError("TOTAL_TIMEOUT", "The provider attempt exceeded its total time limit.") from None
-                        raise ProviderError(
-                            "FIRST_TOKEN_TIMEOUT",
-                            "No output text arrived before the first-text timeout.",
-                        ) from None
-                    try:
-                        iterator = stream.__aiter__()
-                        while True:
-                            try:
-                                event = await next_event(iterator)
-                            except StopAsyncIteration:
-                                break
-                            kind = _event_type(event)
-                            if kind == "response.output_text.delta":
-                                delta = _get(event, "delta", "")
-                                if isinstance(delta, str) and delta:
-                                    record_delta(delta, _event_text_key(event))
-                            elif kind == "response.output_text.done":
-                                final_text = _get(event, "text", "")
-                                if isinstance(final_text, str) and final_text:
-                                    # A done event may precede late deltas on some
-                                    # compatible streams. It is tentative per content
-                                    # slot and is ignored once that slot has deltas.
-                                    key = _event_text_key(event)
-                                    done_texts[key] = final_text
-                                    last_text_at = time.monotonic()
-                            elif kind == "response.completed":
-                                usage_response = _get(event, "response", event)
-                                input_tokens, output_tokens, cached_input_tokens, cache_write_tokens = _usage_metrics(
-                                    usage_response
-                                )
-                                self.last_metrics.update(
-                                    input_tokens=input_tokens,
-                                    output_tokens=output_tokens if output_tokens is not None else tps.token_count,
-                                    cached_input_tokens=cached_input_tokens,
-                                    cache_write_tokens=cache_write_tokens,
-                                )
-                                response_status = _get(usage_response, "status")
-                                if isinstance(response_status, str):
-                                    normalized_status = response_status.casefold()
-                                    if normalized_status == "failed":
-                                        raise ProviderError(
-                                            "UPSTREAM_FAILED",
-                                            "The provider reported a failed response.",
-                                            True,
-                                        )
-                                    if normalized_status in {"incomplete", "cancelled", "canceled"}:
-                                        raise ProviderError(
-                                            "INCOMPLETE_RESPONSE",
-                                            "The provider returned an incomplete response.",
-                                            True,
-                                        )
-                                completed_text = _extract_response_text(usage_response)
-                                completed = True
-                                break
-                            elif kind in {"response.failed", "error", "response.incomplete"}:
-                                code = "UPSTREAM_FAILED" if kind != "response.incomplete" else "INCOMPLETE_RESPONSE"
-                                message = "The provider reported a failed response." if kind != "response.incomplete" else "The provider returned an incomplete response."
-                                raise ProviderError(code, message, True)
-                    finally:
-                        await stream.close()
+            async with client:
+                sdk_arguments = dict(request_body)
+                sdk_arguments.pop("stream", None)
+                try:
+                    stream = await asyncio.wait_for(
+                        client.responses.create(stream=True, **sdk_arguments),
+                        timeout=first_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    raise ProviderError(
+                        "FIRST_TOKEN_TIMEOUT",
+                        "No output text arrived before the first-text timeout.",
+                    ) from None
+                try:
+                    iterator = stream.__aiter__()
+                    while True:
+                        try:
+                            event = await next_event(iterator)
+                        except StopAsyncIteration:
+                            break
+                        kind = _event_type(event)
+                        if kind == "response.output_text.delta":
+                            delta = _get(event, "delta", "")
+                            if isinstance(delta, str) and delta:
+                                record_delta(delta, _event_text_key(event))
+                        elif kind in {"response.reasoning_text.delta", "response.reasoning_summary_text.delta"}:
+                            delta = _get(event, "delta", "")
+                            if isinstance(delta, str) and delta:
+                                record_delta(delta, _event_text_key(event), reasoning=True)
+                        elif kind == "response.output_text.done":
+                            final_text = _get(event, "text", "")
+                            if isinstance(final_text, str) and final_text:
+                                # A done event may precede late deltas on some
+                                # compatible streams. It is tentative per content
+                                # slot and is ignored once that slot has deltas.
+                                key = _event_text_key(event)
+                                done_texts[key] = final_text
+                        elif kind == "response.completed":
+                            usage_response = _get(event, "response", event)
+                            input_tokens, output_tokens, cached_input_tokens, cache_write_tokens = _usage_metrics(
+                                usage_response
+                            )
+                            self.last_metrics.update(
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens if output_tokens is not None else output_guard_tokens(),
+                                cached_input_tokens=cached_input_tokens,
+                                cache_write_tokens=cache_write_tokens,
+                                tps_estimated=counter.estimated or output_tokens is None,
+                            )
+                            response_status = _get(usage_response, "status")
+                            if isinstance(response_status, str):
+                                normalized_status = response_status.casefold()
+                                if normalized_status == "failed":
+                                    raise ProviderError(
+                                        "UPSTREAM_FAILED",
+                                        "The provider reported a failed response.",
+                                        True,
+                                    )
+                                if normalized_status in {"incomplete", "cancelled", "canceled"}:
+                                    raise ProviderError(
+                                        "INCOMPLETE_RESPONSE",
+                                        "The provider returned an incomplete response.",
+                                        True,
+                                    )
+                            completed_text = _extract_response_text(usage_response)
+                            completed = True
+                            break
+                        elif kind in {"response.failed", "error", "response.incomplete"}:
+                            code = "UPSTREAM_FAILED" if kind != "response.incomplete" else "INCOMPLETE_RESPONSE"
+                            message = "The provider reported a failed response." if kind != "response.incomplete" else "The provider returned an incomplete response."
+                            raise ProviderError(code, message, True)
+                finally:
+                    await stream.close()
         except ProviderError:
             raise
         except asyncio.CancelledError:
             raise
         except TimeoutError:
-            raise ProviderError("TOTAL_TIMEOUT", "The provider attempt exceeded its total time limit.") from None
+            if first_text_at is None:
+                raise ProviderError("FIRST_TOKEN_TIMEOUT", "No output text arrived before the first-text timeout.") from None
+            raise ProviderError("INACTIVITY_TIMEOUT", "The provider stopped producing output text.") from None
         except AuthenticationError:
             raise ProviderError("AUTHENTICATION_ERROR", "The provider rejected its credentials.", False) from None
         except RateLimitError:
@@ -526,12 +650,11 @@ class ResponsesProvider:
         finally:
             if started_at is not None:
                 elapsed = max(0.0, time.monotonic() - started_at)
-                measured_tps = tps.generation_tps
-                if measured_tps <= 0 and first_text_at is not None:
-                    measured_tps = tps.token_count / max(elapsed - (first_text_at - started_at), 0.001)
+                measured_tokens = output_tokens if output_tokens is not None else output_guard_tokens()
+                measured_tps = measured_tokens / max(elapsed - (first_text_at - started_at), 0.001) if first_text_at is not None else 0.0
                 self.last_metrics.update(
                     input_tokens=input_tokens,
-                    output_tokens=output_tokens if output_tokens is not None else tps.token_count,
+                    output_tokens=measured_tokens,
                     cached_input_tokens=cached_input_tokens,
                     cache_write_tokens=cache_write_tokens,
                     first_token_latency=(
@@ -539,7 +662,7 @@ class ResponsesProvider:
                     ),
                     generation_tps=measured_tps,
                     total_elapsed=elapsed,
-                    tps_estimated=counter.estimated,
+                    tps_estimated=counter.estimated or output_tokens is None,
                 )
 
         for key in delta_texts.keys() & done_texts.keys():
@@ -562,6 +685,37 @@ class ResponsesProvider:
                 True,
             )
         text = streamed_text or completed_text
+        # Enforce both guards after reconciling done/completed-only text as
+        # well. Stream-time estimates above use only actual deltas and never
+        # count a done or completed event twice.
+        final_output_text = text + reasoning_text
+        estimated_final_output_tokens = counter.count(final_output_text)
+        if counter.estimated:
+            estimated_final_output_tokens = max(estimated_final_output_tokens, (len(final_output_text) + 3) // 4)
+        guard_input_tokens = max(1, input_tokens) if input_tokens is not None else input_guard_tokens()
+        guard_output_tokens = output_tokens if output_tokens is not None else estimated_final_output_tokens
+        if guard_output_tokens >= guard_input_tokens * 100:
+            error = ProviderError(
+                "OUTPUT_LIMIT_EXCEEDED",
+                "The provider output exceeded the configured relative output limit.",
+                False,
+            )
+            error.partial_text = text
+            if reasoning_text:
+                error.partial_reasoning = reasoning_text
+            raise error
+        if guard_output_tokens >= guard_input_tokens * 20 and (
+            _has_repeating_suffix(text[-1024:]) or _has_repeating_suffix(reasoning_text[-1024:])
+        ):
+            error = ProviderError(
+                "REPETITIVE_OUTPUT",
+                "The provider output contained a sustained repeating suffix.",
+                False,
+            )
+            error.partial_text = text
+            if reasoning_text:
+                error.partial_reasoning = reasoning_text
+            raise error
         if not completed:
             raise ProviderError("TRUNCATED_RESPONSE", "The provider stream ended before completion.", True)
         if not text.strip():
@@ -572,10 +726,16 @@ class ResponsesProvider:
         if usage_response is not None:
             input_tokens, output_tokens, cached_input_tokens, cache_write_tokens = _usage_metrics(usage_response)
         elapsed = max(0.0, time.monotonic() - started_at)
-        generation_tps = tps.generation_tps
-        if generation_tps <= 0:
-            counted = tps.token_count or counter.count(text)
-            generation_tps = counted / max(elapsed - (first_text_at - started_at), 0.001)
+        measured_output_tokens = output_tokens if output_tokens is not None else estimated_final_output_tokens
+        generation_tps = measured_output_tokens / max(elapsed - (first_text_at - started_at), 0.001)
+        self.last_metrics.update(
+            input_tokens=input_tokens,
+            output_tokens=measured_output_tokens,
+            cached_input_tokens=cached_input_tokens,
+            cache_write_tokens=cache_write_tokens,
+            generation_tps=generation_tps,
+            tps_estimated=counter.estimated or output_tokens is None,
+        )
         return Generation(
             text=text,
             input_tokens=input_tokens,
@@ -585,7 +745,7 @@ class ResponsesProvider:
             first_token_latency=max(0.0, first_text_at - started_at),
             generation_tps=generation_tps,
             total_elapsed=elapsed,
-            tps_estimated=counter.estimated,
+            tps_estimated=counter.estimated or output_tokens is None,
         )
 
 

@@ -3,4 +3,4 @@
 from .config import ProviderConfig, Settings
 
 __all__ = ["ProviderConfig", "Settings"]
-__version__ = "0.1.3"
+__version__ = "0.1.4"

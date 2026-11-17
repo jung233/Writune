@@ -100,10 +100,14 @@ For a single provider, the compatibility variables `WRITUNE_PROVIDER_URL` and `W
 | `lease_seconds` | 15 | Worker/task lease interval |
 | `task_ttl_hours` | 24 | Retention age before terminal task cleanup |
 | `connect_timeout` | 8s | Provider connection timeout |
-| `first_token_timeout` | 70s | Wait for first nonempty text |
-| `inactivity_timeout` | 20s | Maximum wait without generation progress |
-| `total_timeout` | 420s | Maximum duration for one provider attempt |
-| `min_tps` | 6 | Minimum generation rate threshold after warm-up |
+| `first_token_timeout` | 120s | Initial wait for nonempty text or exposed reasoning tokens |
+| `inactivity_timeout` | 120s | Maximum gap without nonempty text or exposed reasoning tokens; heartbeats do not count |
+| `total_timeout` | 420s (legacy) | Retained for configuration compatibility; does not cap streaming duration |
+| `min_tps` | 6 (legacy) | Retained for compatibility; streaming speed is measured, not used to abort |
+
+Active streaming is not cut off by elapsed wall time or low token rate. A repeated recent output suffix at 20 times request input tokens stops with `REPETITIVE_OUTPUT`; output reaching 100 times input stops with `OUTPUT_LIMIT_EXCEEDED` regardless of repetition. Exposed reasoning deltas count; hidden reasoning cannot be observed. These non-retryable stops retain partial output separately and return original fallback with `review_required=true`. The main model must review the retained file before using it.
+
+Batch Markdown supports `segmentation="section"`, `"document"`, or `"paragraph"` (compatibility default). The main model chooses based on coherence, heading structure, and model input/output capacity; whole documents generally within 100K input tokens can stay in one request. Submission responses include advisory token estimates; at 200K input tokens they warn to verify long-context support without blocking task creation. Default MCP results omit the text field and duplicate text content block; explicit `inline_text=true` is required for inline prose.
 
 Provider-level settings can override concurrency, model concurrency, capability flags, request parameters, cache options, tokenizers, and timeouts. A provider base URL must be an absolute HTTP or HTTPS URL.
 

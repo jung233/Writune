@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import CallToolResult
 
 from writune.config import Settings
 from writune.schemas import (
@@ -124,12 +125,17 @@ def create_server(service: Service | None = None, *, home: str | Path | None = N
 
     @server.tool(
         name="writune_submit_batch",
-        description="Queue paragraphs, authorized source files, or an automatically segmented Markdown file.",
+        description=(
+            "Queue explicit items, authorized source files, or a Markdown file. "
+            "For markdown_path, segmentation selects paragraph (default), section "
+            "(ATX/Setext headings and following content), or document (the entire file)."
+        ),
     )
     def writune_submit_batch(
         items: list[BatchItem] | None = None,
         source_paths: list[str] | None = None,
         markdown_path: str | None = None,
+        segmentation: Literal["paragraph", "section", "document"] = "paragraph",
         source_encoding: str | None = None,
         language: Literal["zh", "en"] | None = None,
         scene: str | None = None,
@@ -144,7 +150,7 @@ def create_server(service: Service | None = None, *, home: str | Path | None = N
         options: dict[str, Any] | None = None,
         max_concurrency: int | None = None,
     ) -> BatchResponse:
-        """Submit a batch while preserving paragraph order."""
+        """Submit a batch; segmentation applies only to ``markdown_path``."""
 
         provided_modes = sum(value is not None for value in (items, source_paths, markdown_path))
         if provided_modes != 1:
@@ -155,6 +161,7 @@ def create_server(service: Service | None = None, *, home: str | Path | None = N
                 items=item_dicts,
                 source_paths=source_paths,
                 markdown_path=markdown_path,
+                segmentation=segmentation,
                 source_encoding=source_encoding,
                 max_concurrency=max_concurrency,
                 language=language,
@@ -189,10 +196,12 @@ def create_server(service: Service | None = None, *, home: str | Path | None = N
         name="writune_result",
         description="Get result paths and outcome; include inline_text only when explicitly needed.",
     )
-    def writune_result(task_id: str, inline_text: bool = False) -> ResultResponse:
+    def writune_result(task_id: str, inline_text: bool = False) -> Annotated[CallToolResult, ResultResponse]:
         """Return result metadata, optionally including the polished text."""
 
-        return ResultResponse.model_validate(get_service().result(task_id, inline_text=inline_text))
+        payload=ResultResponse.model_validate(get_service().result(task_id, inline_text=inline_text)).model_dump(mode='json',exclude_none=True)
+        # Structured metadata is sufficient; suppress FastMCP's duplicate text block.
+        return CallToolResult(content=[],structuredContent=payload)
 
     @server.tool(
         name="writune_apply",

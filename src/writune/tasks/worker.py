@@ -152,7 +152,7 @@ class Worker:
             return
         folder=Path(row['original_path']).parent
         error_code=row['error_code'];error_message=row['error_message']
-        text=original;outcome='original_fallback';metrics={}
+        text=original;outcome='original_fallback';metrics={};review_artifacts={}
         max_attempts=1+payload.get('retry_count',self.settings.retry_count)
         try:
             protected=protect(original,terms=payload.get('context',{}).get('terminology',[]))
@@ -202,6 +202,20 @@ class Worker:
                     except Exception as exc:
                         error_code=getattr(exc,'code','VALIDATION_FAILED' if exc.__class__.__name__=='ValidationError' else 'PROVIDER_ERROR')
                         error_message='Output validation failed' if error_code=='VALIDATION_FAILED' else 'Upstream attempt failed ('+str(error_code)+')'
+                        if error_code in {'REPETITIVE_OUTPUT','OUTPUT_LIMIT_EXCEEDED'}:
+                            # Retain unvalidated output separately; never publish it as polished prose.
+                            review_artifacts={'review_required':True,'partial_output_path':str(folder/'partial-output.txt')}
+                            partial_text=getattr(exc,'partial_text','')
+                            # A stopped stream can omit protected tokens; strict restore
+                            # validates complete output and must not discard this artifact.
+                            for token,value in protected._entries:
+                                partial_text=partial_text.replace(token,value)
+                            atomic_write(folder/'partial-output.txt',partial_text.encode('utf-8'),overwrite=True)
+                            reasoning=getattr(exc,'partial_reasoning','')
+                            if reasoning:
+                                atomic_write(folder/'partial-reasoning.txt',reasoning.encode('utf-8'),overwrite=True)
+                                review_artifacts['partial_reasoning_path']=str(folder/'partial-reasoning.txt')
+                            error_message='Generation stopped by output guard; retained output requires main-model review'
                         partial=dict(getattr(adapter,'last_metrics',{}))
                         partial['total_elapsed']=time.monotonic()-started
                         self.record_attempt(tid,number,success=False,error_code=error_code,**partial)
@@ -216,6 +230,7 @@ class Worker:
                 error_code='ATTEMPT_BUDGET_EXHAUSTED';error_message='Attempt budget exhausted; original delivered'
             result=folder/'result.txt';manifest=folder/'result.json'
             content={'task_id':tid,'status':'completed','outcome':outcome,'result_path':str(result),'polished':outcome=='polished','fallback_used':outcome=='original_fallback','error':{'code':error_code,'message':error_message,'attempts':current['attempt_count']} if error_code else None,'possible_duplicate_billing':bool(current['possible_duplicate_billing']),'tps_estimated':getattr(generation,'tps_estimated',True) if outcome=='polished' else None,'metrics':metrics}
+            content.update(review_artifacts)
             # Fence publication as well as the record update. A recovered stale worker
             # must never overwrite a newer owner's result files.
             with self.db.connect(immediate=True) as c:

@@ -184,7 +184,34 @@ class Service:
 
     def submit(self, **kwargs):
         r=self._insert([self._prepare(**kwargs)])[0]
-        return self._submitted(r)
+        return {**self._submitted(r),**self._context_estimate(r)}
+
+    def _context_estimate(self, row):
+        """Advisory only: estimate each configured model's complete protected prompt."""
+        from writune.polishing.prompts import build_prompt
+        from writune.polishing.protected_spans import protect
+        from writune.providers.tps import TokenCounter
+        payload=json.loads(row['payload'])
+        original=read_text_exact(row['original_path'])
+        protected=protect(original,terms=payload.get('context',{}).get('terminology',[]))
+        counts=[];estimated=False
+        for ref in {row['primary_model'],row['secondary_model']} - {None,''}:
+            name,model=split_model(ref)
+            provider=self.settings.providers[name].resolve_model(model)
+            templates=dict(self.settings.custom_templates)
+            for key,value in provider.custom_templates.items():
+                templates[key]={**templates[key],**value} if isinstance(value,dict) and isinstance(templates.get(key),dict) else value
+            prompt=build_prompt(protected.text,language=row['language'],scene=row['scene'],style=payload['style'],context=payload.get('context'),local_context=payload.get('local_context',''),custom_templates=templates)
+            counter=TokenCounter(provider.tokenizer)
+            request_text=prompt.prefix+'\n\n'+prompt.input
+            count=counter.count(request_text)
+            if counter.estimated:
+                count=max(count,(len(request_text)+3)//4)
+            counts.append(count)
+            estimated=estimated or counter.estimated
+        count=max(counts,default=0)
+        warnings=['POSSIBLE_CONTEXT_WINDOW_EXCEEDED: estimated input is at least 200K tokens; main model should verify primary and fallback models support long context and allow room for output. Task creation continues.'] if count>=200_000 else []
+        return {'estimated_input_tokens':count,'token_count_estimated':estimated,'warnings':warnings}
 
     def _submitted(self,r):
         with self.db.connect() as c:
@@ -192,8 +219,12 @@ class Service:
             pos=pos[0] if pos else 0
         return {'task_id':r['task_id'],'status':r['status'],'estimated_seconds':r.get('estimated_seconds'),'estimate_confidence':r.get('estimate_confidence') or 'low','queue_position':pos,'worker_start_pending':getattr(self,'_worker_start_failed',False)}
 
-    def submit_batch(self,items=None,source_paths=None,markdown_path=None,max_concurrency=None,source_encoding=None,**kwargs):
+    def submit_batch(self,items=None,source_paths=None,markdown_path=None,max_concurrency=None,source_encoding=None,segmentation='paragraph',**kwargs):
         delivery=None
+        if segmentation not in ('paragraph','section','document'):
+            raise ValueError('segmentation must be paragraph, section, or document')
+        if segmentation!='paragraph' and markdown_path is None:
+            raise ValueError('Nondefault segmentation is supported only with markdown_path')
         if max_concurrency is not None and (isinstance(max_concurrency,bool) or not isinstance(max_concurrency,int) or max_concurrency<1):
             raise ValueError('Batch max_concurrency must be a positive integer')
         if sum(x is not None for x in (items,source_paths,markdown_path))!=1:
@@ -205,7 +236,7 @@ class Service:
             decoded=decode_text(raw)
             if source_encoding and not decoded.bom:
                 decoded=DecodedText(raw.decode(source_encoding),source_encoding,b'')
-            parts=segment_markdown(decoded.text)
+            parts=segment_markdown(decoded.text,segmentation=segmentation)
             delivery={'mode':'markdown','encoding':decoded.encoding,'bom':base64.b64encode(decoded.bom).decode('ascii')}
             items=[{'text':p} for p in parts]
         elif source_paths is not None:
@@ -233,7 +264,16 @@ class Service:
         if len(ids)==1 and next(iter(ids)):
             bid=next(iter(ids))
         estimates=[r.get('estimated_seconds') for r in rows]
-        return {'batch_id':bid,'task_ids':[r['task_id'] for r in rows],'accepted_count':len(rows),'estimated_seconds':max(estimates) if all(x is not None for x in estimates) else None}
+        context_estimates=[self._context_estimate(row) for row in rows]
+        return {
+            'batch_id':bid,
+            'task_ids':[r['task_id'] for r in rows],
+            'accepted_count':len(rows),
+            'estimated_seconds':max(estimates) if all(x is not None for x in estimates) else None,
+            'estimated_input_tokens':max((item['estimated_input_tokens'] for item in context_estimates),default=0),
+            'token_count_estimated':any(item['token_count_estimated'] for item in context_estimates),
+            'warnings':[f"{row['task_id']}: {warning}" for row,item in zip(rows,context_estimates) for warning in item['warnings']],
+        }
 
     def status(self,task_id=None,batch_id=None):
         if bool(task_id)==bool(batch_id):
@@ -284,6 +324,9 @@ class Service:
         r=self._check_artifacts(self.db.get(task_id))
         out={k:r[k] for k in ('task_id','status','outcome','result_path','manifest_path','possible_duplicate_billing')}
         out.update(polished=r['outcome']=='polished',fallback_used=r['outcome']=='original_fallback',error={'code':r['error_code'],'message':r['error_message'],'attempts':r['attempt_count']} if r['error_code'] else None)
+        if r['manifest_path'] and Path(r['manifest_path']).is_file():
+            manifest=json.loads(read_text_exact(r['manifest_path']))
+            out.update({key:manifest[key] for key in ('review_required','partial_output_path','partial_reasoning_path') if key in manifest})
         if inline_text and r['result_path']:
             out['text']=read_text_exact(self.workspace.check(r['result_path']))
         return out

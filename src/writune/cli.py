@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import typer
@@ -223,10 +223,8 @@ def _init_settings(
         default_style = default_style or typer.prompt("Default polishing style", default="natural")
         max_concurrency = max_concurrency if max_concurrency is not None else typer.prompt("Max concurrency", default=4, type=int)
         connect_timeout = connect_timeout if connect_timeout is not None else typer.prompt("Connect timeout (seconds)", default=8.0, type=float)
-        first_token_timeout = first_token_timeout if first_token_timeout is not None else typer.prompt("First text token timeout (seconds)", default=70.0, type=float)
-        min_tps = min_tps if min_tps is not None else typer.prompt("Minimum TPS", default=6.0, type=float)
-        inactivity_timeout = inactivity_timeout if inactivity_timeout is not None else typer.prompt("Generation inactivity timeout (seconds)", default=20.0, type=float)
-        total_timeout = total_timeout if total_timeout is not None else typer.prompt("Total request timeout (seconds)", default=420.0, type=float)
+        first_token_timeout = first_token_timeout if first_token_timeout is not None else typer.prompt("First text or reasoning token timeout (seconds)", default=120.0, type=float)
+        inactivity_timeout = inactivity_timeout if inactivity_timeout is not None else typer.prompt("Streaming token inactivity timeout (seconds)", default=120.0, type=float)
         retry_count = retry_count if retry_count is not None else typer.prompt("Retry count", default=1, type=int)
         data_dir = data_dir or Path(typer.prompt("Queue and statistics directory (task files use OS temp)", default=str(existing.data_dir)))
         task_ttl_hours = task_ttl_hours if task_ttl_hours is not None else typer.prompt("Task file retention (hours)", default=24.0, type=float)
@@ -357,9 +355,9 @@ def init(
     max_concurrency: int | None = typer.Option(None, "--max-concurrency", min=1),
     connect_timeout: float | None = typer.Option(None, "--connect-timeout", min=0),
     first_token_timeout: float | None = typer.Option(None, "--first-token-timeout", min=0),
-    min_tps: float | None = typer.Option(None, "--min-tps", min=0),
+    min_tps: float | None = typer.Option(None, "--min-tps", min=0, help="Legacy setting; low TPS no longer aborts streaming."),
     inactivity_timeout: float | None = typer.Option(None, "--inactivity-timeout", min=0),
-    total_timeout: float | None = typer.Option(None, "--total-timeout", min=0),
+    total_timeout: float | None = typer.Option(None, "--total-timeout", min=0, help="Legacy setting; no total duration limit is applied to streaming."),
     retry_count: int | None = typer.Option(None, "--retry-count", min=0),
     data_dir: Path | None = typer.Option(None, "--data-dir"),
     task_ttl_hours: float | None = typer.Option(None, "--task-ttl-hours", min=0),
@@ -665,6 +663,7 @@ def status(
 @app.command('submit-batch')
 def submit_batch(
     markdown_path: Path | None = typer.Option(None,'--markdown-path'),
+    segmentation: Literal['paragraph','section','document'] = typer.Option('paragraph','--segmentation',help='Markdown input unit: paragraph, section headings, or the whole document.'),
     items_file: Path | None = typer.Option(None,'--items-file',help='UTF-8 JSON array of paragraph objects'),
     source_paths: list[Path] | None = typer.Option(None,'--source-path'),
     language: str | None = typer.Option(None,'--language'),
@@ -677,7 +676,7 @@ def submit_batch(
 ) -> None:
     service=_service(home)
     items=json.loads(service.workspace.check(items_file).read_text(encoding='utf-8-sig')) if items_file else None
-    _echo_json(service.submit_batch(items=items,markdown_path=markdown_path,source_paths=source_paths or None,language=language,scene=scene,context_id=context_id,style=style,max_concurrency=max_concurrency,idempotency_key=idempotency_key))
+    _echo_json(service.submit_batch(items=items,markdown_path=markdown_path,source_paths=source_paths or None,segmentation=segmentation,language=language,scene=scene,context_id=context_id,style=style,max_concurrency=max_concurrency,idempotency_key=idempotency_key))
 
 
 @app.command('merge-batch')
